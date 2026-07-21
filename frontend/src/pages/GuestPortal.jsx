@@ -796,8 +796,8 @@ const GuestPortal = () => {
                   <p className="text-2xl font-mono font-bold tracking-[0.4em] text-amber-900">{generatedOtp}</p>
                 </div>
                 <div className="mb-6">
-                  <input type="text" inputMode="numeric" maxLength={6} placeholder="Enter 6-digit OTP"
-                    className="w-full text-center tracking-[0.5em] text-2xl px-4 py-3 border border-gray-300 rounded-md outline-none focus:border-blue-500"
+                  <input type="text" inputMode="numeric" maxLength={6} placeholder="Enter OTP"
+                    className="w-full text-center font-mono text-xl tracking-[0.4em] indent-[0.4em] px-4 py-3 border border-gray-300 rounded-md outline-none focus:border-blue-500"
                     value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').substring(0, 6))} />
                 </div>
                 <button onClick={handleVerifyOTP} disabled={otp.length !== 6} 

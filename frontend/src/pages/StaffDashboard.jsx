@@ -16,6 +16,7 @@ const StaffDashboard = () => {
   const [expandedRes, setExpandedRes] = useState(null);
   const [inventoryView, setInventoryView] = useState('tier');
   const [documentModalUrl, setDocumentModalUrl] = useState(null);
+  const [docHidden, setDocHidden] = useState(false); // hide the secure doc on focus loss / capture attempt
   
   // User Management State
   const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', username: '', password: '', role: 'Manager' });
@@ -64,6 +65,35 @@ const StaffDashboard = () => {
     localStorage.removeItem('staffUser');
     setUser(null);
   };
+
+  // Deter screenshots/captures of an open secure document: blur it when the
+  // window loses focus or a capture key is pressed. Browsers cannot truly block
+  // OS-level screenshots, so this is a deterrent paired with the on-image watermark.
+  useEffect(() => {
+    if (!documentModalUrl) { setDocHidden(false); return; }
+    const hide = () => setDocHidden(true);
+    const show = () => setDocHidden(false);
+    const onVis = () => (document.hidden ? hide() : show());
+    const onKey = (e) => {
+      const k = (e.key || '').toLowerCase();
+      if (e.key === 'PrintScreen' || ((e.ctrlKey || e.metaKey) && ['p', 's', 'c'].includes(k))) {
+        hide();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('blur', hide);
+    window.addEventListener('focus', show);
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('blur', hide);
+      window.removeEventListener('focus', show);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, [documentModalUrl]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -380,7 +410,16 @@ const StaffDashboard = () => {
                             <td className="p-4 text-gray-600">
                               {new Date(guest.checkInDate).toLocaleDateString()} to <br/> {new Date(guest.checkOutDate).toLocaleDateString()}
                             </td>
-                            <td className="p-4 text-gray-600">{guest.idType}</td>
+                            <td className="p-4 text-gray-600">
+                              <div className="font-medium text-gray-700">{guest.idType}</div>
+                              {guest.documentUrl ? (
+                                <button onClick={(e) => handleViewDocument(e, guest.documentUrl)} className="mt-1 text-[11px] text-blue-600 hover:text-blue-800 underline font-medium inline-flex items-center gap-1">
+                                  <FileText className="w-3 h-3" /> View Document
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-gray-400">No document</span>
+                              )}
+                            </td>
                             <td className="p-4">
                               <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                                 guest.status === 'Verified' ? 'bg-green-100 text-green-700' : 
@@ -743,21 +782,42 @@ const StaffDashboard = () => {
               >
                 {/* Invisible overlay to block right-clicks and drags on the image itself */}
                 <div className="absolute inset-0 z-10 bg-transparent pointer-events-auto" onContextMenu={(e) => e.preventDefault()}></div>
-                
-                <img 
-                  src={documentModalUrl} 
-                  alt="Secure Document Scan" 
-                  className="max-w-full max-h-[80vh] object-contain select-none"
-                  style={{ 
-                    WebkitUserSelect: 'none', 
+
+                {/* Traceability watermark tiled across the document (deters captures) */}
+                <div
+                  className="pointer-events-none absolute inset-0 z-20 opacity-40"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(
+                      `<svg xmlns='http://www.w3.org/2000/svg' width='340' height='170'><text x='8' y='95' fill='white' font-family='Arial' font-size='15' transform='rotate(-30 170 85)'>${(user?.name || 'STAFF')} • ${(user?.role || '')} • CONFIDENTIAL</text></svg>`
+                    )}")`,
+                    backgroundRepeat: 'repeat',
+                  }}
+                ></div>
+
+                <img
+                  src={documentModalUrl}
+                  alt="Secure Document Scan"
+                  className="max-w-full max-h-[80vh] object-contain select-none transition-all duration-150"
+                  style={{
+                    WebkitUserSelect: 'none',
                     userSelect: 'none',
-                    pointerEvents: 'none'
-                  }} 
+                    pointerEvents: 'none',
+                    filter: docHidden ? 'blur(28px)' : 'none'
+                  }}
                 />
+
+                {/* Shown when the window loses focus or a capture key is detected */}
+                {docHidden && (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 text-center px-6">
+                    <ShieldCheck className="w-10 h-10 text-green-400 mb-3" />
+                    <p className="text-white font-bold">Protected view hidden</p>
+                    <p className="text-white/60 text-sm mt-1">Return focus to this window to view the document.</p>
+                  </div>
+                )}
               </div>
               <p className="text-white/60 text-xs mt-4 text-center font-medium tracking-wide flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-green-400" />
-                SECURE DOCUMENT VIEW &bull; DOWNLOADING, COPYING, AND RIGHT-CLICKING ARE DISABLED
+                SECURE VIEW &bull; COPY / DOWNLOAD / RIGHT-CLICK DISABLED &bull; WATERMARKED &amp; CAPTURE-DETERRED
               </p>
             </div>
           </div>
