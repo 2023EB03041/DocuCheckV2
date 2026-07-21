@@ -1,53 +1,48 @@
-.PHONY: setup start start-bg stop logs docker-up docker-down docker-build docker-logs clean
+# DocuCheck — Makefile (main branch)
+# Local dev runs the app directly with Node; Docker targets run the containerized stack.
+# Production deploys from the `prod` branch (Cloudflare Pages + Render); `prod` has no Docker.
 
-## Docker Commands
-.PHONY: up down
+.PHONY: setup start build clean up down docker-build docker-logs
 
-# Start the entire project using Docker Compose
-up:
-	docker-compose up -d --build
+## --- Local development (no containers) ---
 
-# Stop the entire project using Docker Compose
-down:
-	docker-compose down
-
-# Local Node commands (Without Docker)
+# Install backend and frontend dependencies
 setup:
 	@echo "Installing backend dependencies..."
 	cd backend && npm install
 	@echo "Installing frontend dependencies..."
 	cd frontend && npm install
 
+# Run backend (http://localhost:5000) and frontend (http://localhost:5173) dev servers
 start:
-	@echo "Starting backend and frontend locally (interactive)..."
-	@echo "Opening new terminal windows for Backend and Frontend."
+	@echo "Starting backend and frontend dev servers in new terminals..."
 	start cmd /c "cd backend && npm run dev"
 	start cmd /c "cd frontend && npm run dev"
 
-# Docker commands
-docker-build:
-	@echo "Building Docker images..."
-	docker-compose build
+# Build the frontend for production
+build:
+	cd frontend && npm run build
 
-docker-up:
-	@echo "Starting project in Docker containers..."
-	docker-compose up -d
-	@echo "=========================================================="
-	@echo "🚀 Services started successfully in the background!"
-	@echo "🌍 Frontend running at: http://localhost:5173"
-	@echo "⚙️  Backend running at:  http://localhost:5000"
-	@echo "=========================================================="
+# Remove installed dependencies and build output
+clean:
+	@echo "Removing node_modules and build output..."
+	rm -rf backend/node_modules frontend/node_modules frontend/dist
 
-docker-down:
-	@echo "Stopping Docker containers..."
+## --- Docker (containerized stack) ---
+
+# Build and start all services in the background
+up:
+	docker-compose up -d --build
+	@echo "Frontend: http://localhost:8080   Backend: http://localhost:5000"
+
+# Stop all services
+down:
 	docker-compose down
 
+# Build Docker images
+docker-build:
+	docker-compose build
+
+# Follow container logs
 docker-logs:
 	docker-compose logs -f
-
-# Clean up
-clean:
-	@echo "Removing node_modules..."
-	rm -rf backend/node_modules frontend/node_modules
-	@echo "Removing temporary uploads..."
-	rm -rf backend/uploads/*
