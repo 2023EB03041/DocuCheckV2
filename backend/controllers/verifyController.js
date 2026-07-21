@@ -13,8 +13,11 @@ class VerifyController {
       res.json(extractionResult);
     } catch (error) {
       console.error('Extraction route error:', error);
-      if (error.message.includes('already been used')) {
-        res.status(400).json({ message: error.message });
+      const msg = error.message || '';
+      // Both duplicate-document cases ("already been used" / "already being
+      // used ... overlapping dates") are client-side issues -> 400, not 500.
+      if (msg.includes('already been used') || msg.includes('already being used')) {
+        res.status(400).json({ message: msg });
       } else {
         res.status(500).json({ message: 'Internal server error during extraction' });
       }
