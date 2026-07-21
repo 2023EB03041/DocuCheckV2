@@ -176,13 +176,11 @@ const extractDataFromText = (text) => {
     }
   }
   
-  // Ultimate safeguard
+  // Do NOT fabricate data. If the name or age could not be genuinely read from
+  // the document, leave them empty/null so the caller can reject the image and
+  // ask the guest to upload a clearer, better-quality photo instead.
   if (!extractedName || extractedName.trim().length < 2) {
-    extractedName = "Guest Name";
-  }
-  
-  if (!extractedAge) {
-    extractedAge = 30; // Ultimate fallback
+    extractedName = '';
   }
 
   return { extractedName, extractedAge, extractedSex };
@@ -267,11 +265,27 @@ export const extractDocumentDetails = async (imageBuffer) => {
     }
 
     const { extractedName, extractedAge, extractedSex } = extractDataFromText(text);
-    
+
+    // Reject the image if the key details could not be read from it. We never
+    // accept an ID whose data could not be filled — the guest is asked to
+    // re-upload a clearer, higher-quality photo instead of proceeding with
+    // blank or placeholder data.
+    const nameReadable = extractedName && extractedName.trim().length >= 2;
+    const ageReadable = extractedAge && !isNaN(extractedAge);
+    if (!nameReadable || !ageReadable) {
+      return {
+        success: false,
+        extractedName: '',
+        extractedAge: null,
+        extractedSex: '',
+        error: 'We could not clearly read the details on this ID. Please upload a sharper, better-quality photo — good lighting, no blur, and all text clearly visible.'
+      };
+    }
+
     return {
       success: true,
-      extractedName: extractedName || 'Name not found',
-      extractedAge: extractedAge || 30, // Fallback
+      extractedName,
+      extractedAge,
       extractedSex: extractedSex || 'Other'
     };
   } catch (error) {
