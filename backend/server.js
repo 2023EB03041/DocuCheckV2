@@ -49,18 +49,23 @@ const connectDB = async () => {
     await mongoose.connect(uri);
     console.log('Connected to MongoDB Atlas');
     
-    // Seed Rooms for PMS Demo
-    const roomCount = await Room.countDocuments();
-    if (roomCount === 0) {
-      console.log('Seeding initial room inventory...');
-      const rooms = [];
-      for(let i=1; i<=5; i++) rooms.push({ roomNumber: `10${i}`, type: 'Standard', pricePerNight: 12000 });
-      for(let i=1; i<=3; i++) rooms.push({ roomNumber: `20${i}`, type: 'Deluxe', pricePerNight: 18000 });
-      for(let i=1; i<=2; i++) rooms.push({ roomNumber: `30${i}`, type: 'Ocean View', pricePerNight: 28000 });
-      rooms.push({ roomNumber: '401', type: 'Presidential Suite', pricePerNight: 75000 });
-      
-      await Room.insertMany(rooms);
-    }
+    // Seed / top-up room inventory (idempotent: adds only missing rooms, so it
+    // grows an already-seeded DB without touching existing rooms/bookings).
+    const pad = (n) => String(n).padStart(2, '0');
+    const desiredRooms = [];
+    for (let i = 1; i <= 12; i++) desiredRooms.push({ roomNumber: `1${pad(i)}`, type: 'Standard', pricePerNight: 12000 });
+    for (let i = 1; i <= 10; i++) desiredRooms.push({ roomNumber: `2${pad(i)}`, type: 'Deluxe', pricePerNight: 18000 });
+    for (let i = 1; i <= 8; i++)  desiredRooms.push({ roomNumber: `3${pad(i)}`, type: 'Ocean View', pricePerNight: 28000 });
+    for (let i = 1; i <= 6; i++)  desiredRooms.push({ roomNumber: `4${pad(i)}`, type: 'Presidential Suite', pricePerNight: 75000 });
+
+    await Room.bulkWrite(desiredRooms.map((r) => ({
+      updateOne: {
+        filter: { roomNumber: r.roomNumber },
+        update: { $setOnInsert: { ...r, status: 'Available' } },
+        upsert: true,
+      },
+    })));
+    console.log(`Room inventory ensured: ${desiredRooms.length} rooms.`);
 
     // Seed default Superuser for PMS Demo
     const userCount = await User.countDocuments();
