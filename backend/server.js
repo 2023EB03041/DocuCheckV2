@@ -21,6 +21,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Lightweight health check (public, no DB) for the hosting platform.
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
 // Routes
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/verify', verifyRoutes);
