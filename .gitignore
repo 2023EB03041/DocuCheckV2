@@ -39,3 +39,4 @@ pnpm-debug.log*
 .nuxt
 .vite
 .cache
+frontend/package-lock.json
