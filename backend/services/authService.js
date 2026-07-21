@@ -2,8 +2,6 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import userRepository from '../repositories/userRepository.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkeyforlocaldev';
-
 class AuthService {
   async authenticateUser(username, password, loginType) {
     const user = await userRepository.findByUsername(username);
@@ -16,7 +14,8 @@ class AuthService {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) throw new Error('Invalid credentials');
 
-    const token = jwt.sign({ id: user._id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
+    // Read the secret at call time (after dotenv has loaded), not at import time.
+    const token = jwt.sign({ id: user._id, role: user.role, username: user.username }, process.env.JWT_SECRET, { expiresIn: '1d' });
     
     return {
       token,

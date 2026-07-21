@@ -9,6 +9,11 @@ import documentRoutes from './routes/documentRoutes.js';
 
 dotenv.config();
 
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET is not defined. Set it in the environment before starting.');
+  process.exit(1);
+}
+
 const app = express();
 
 // Middleware

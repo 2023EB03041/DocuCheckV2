@@ -23,6 +23,9 @@ const StaffDashboard = () => {
 
   const toTitleCase = (str) => str ? str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()) : '';
 
+  // Authorization header for staff-only endpoints.
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('staffToken')}` });
+
   useEffect(() => {
     const storedUser = localStorage.getItem('staffUser');
     if (storedUser) {
@@ -37,12 +40,15 @@ const StaffDashboard = () => {
       try {
         const [roomsRes, resRes] = await Promise.all([
           axios.get(`${API_URL}/reservations/rooms`),
-          axios.get(`${API_URL}/reservations`)
+          axios.get(`${API_URL}/reservations`, { headers: authHeader() })
         ]);
         setRooms(roomsRes.data);
         setReservations(resRes.data);
       } catch (error) {
         console.error('Error fetching data:', error);
+        if (error.response && error.response.status === 401) {
+          handleLogout(); // token missing/expired -> return to login
+        }
       } finally {
         setLoading(false);
       }
@@ -63,7 +69,7 @@ const StaffDashboard = () => {
     e.preventDefault();
     setUserMsg({ type: '', text: '' });
     try {
-      await axios.post(`${API_URL}/auth/register`, newUser);
+      await axios.post(`${API_URL}/auth/register`, newUser, { headers: authHeader() });
       setUserMsg({ type: 'success', text: 'Manager created successfully!' });
       setNewUser({ name: '', email: '', phone: '', username: '', password: '', role: 'Manager' });
     } catch (err) {
