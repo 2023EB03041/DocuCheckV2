@@ -85,9 +85,10 @@ const GuestPortal = () => {
       }
     }
 
-    const newFiles = [...files];
-    newFiles[index] = file;
-    setFiles(newFiles);
+    // Safely clear only this guest's file (never leave an unverified file "accepted").
+    const clearFile = () => setFiles(prev => { const c = [...prev]; c[index] = null; return c; });
+
+    setFiles(prev => { const c = [...prev]; c[index] = file; return c; });
 
     if (!file) return;
 
@@ -99,33 +100,39 @@ const GuestPortal = () => {
 
     try {
       const res = await axios.post(`${API_URL}/verify/extract`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000 // OCR on the free tier can be slow / cold-start
       });
-      
+
       const { success, extractedName, extractedAge, extractedSex, error } = res.data;
-      if (success) {
-        const updatedGuests = [...booking.guests];
-        if (extractedName) updatedGuests[index].name = extractedName.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
-        if (extractedAge) updatedGuests[index].age = extractedAge;
-        if (extractedSex) updatedGuests[index].sex = extractedSex;
-        setBooking(prev => ({ ...prev, guests: updatedGuests }));
+      if (success && extractedName) {
+        setBooking(prev => {
+          const g = [...prev.guests];
+          g[index] = {
+            ...g[index],
+            name: extractedName.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()),
+            ...(extractedAge ? { age: extractedAge } : {}),
+            ...(extractedSex ? { sex: extractedSex } : {}),
+          };
+          return { ...prev, guests: g };
+        });
       } else {
         alert(error || "This document does not appear to be a valid ID, or it is too blurry to read. Please upload a clear photo of a valid Govt ID.");
-        // Clear the invalid file
-        const clearedFiles = [...files];
-        clearedFiles[index] = null;
-        setFiles(clearedFiles);
+        clearFile();
       }
     } catch (err) {
-      if (err.response && err.response.status === 400) {
-        alert(err.response.data.message || "Extraction failed");
-        // Clear the duplicate/invalid file
-        const clearedFiles = [...files];
-        clearedFiles[index] = null;
-        setFiles(clearedFiles);
+      // Any failure (timeout, server busy, duplicate, network) must reject the file,
+      // never silently keep it. Show a useful message and let the guest retry.
+      let msg;
+      if (err.code === 'ECONNABORTED') {
+        msg = "Verification timed out — the server may be waking up. Please try uploading again in a moment.";
+      } else if (err.response?.data?.message) {
+        msg = err.response.data.message;
       } else {
-        console.error('Extraction failed', err);
+        msg = "We couldn't verify this document (the server may be busy). Please try uploading it again.";
       }
+      alert(msg);
+      clearFile();
     } finally {
       setExtracting(prev => ({ ...prev, [index]: false }));
     }
