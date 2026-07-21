@@ -43,6 +43,7 @@ const GuestPortal = () => {
   // Payment Simulation State
   const [paymentStatus, setPaymentStatus] = useState('idle'); // idle, connecting, otp, processing, success
   const [otp, setOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
   
   // Final Result
   const [reservation, setReservation] = useState(null);
@@ -208,9 +209,17 @@ const GuestPortal = () => {
     }
     if (!payment.expiry || !/^(0[1-9]|1[0-2])\/([0-9]{2})$/.test(payment.expiry)) {
       newErrors.expiry = "Valid expiry date (MM/YY) required";
+    } else {
+      const [mm, yy] = payment.expiry.split('/').map(Number);
+      const now = new Date();
+      const curYY = now.getFullYear() % 100;
+      const curMM = now.getMonth() + 1;
+      if (yy < curYY || (yy === curYY && mm < curMM)) {
+        newErrors.expiry = "Card expiry cannot be in the past";
+      }
     }
-    if (!payment.cvc || !/^\d{3,4}$/.test(payment.cvc)) {
-      newErrors.cvc = "Valid CVC required";
+    if (!payment.cvc || !/^\d{3}$/.test(payment.cvc)) {
+      newErrors.cvc = "Valid 3-digit CVC required";
     }
 
     setErrors(newErrors);
@@ -232,7 +241,7 @@ const GuestPortal = () => {
   };
 
   const handleCvcChange = (e) => {
-    let val = e.target.value.replace(/\D/g, '').substring(0, 4);
+    let val = e.target.value.replace(/\D/g, '').substring(0, 3);
     setPayment({...payment, cvc: val});
   };
 
@@ -243,16 +252,22 @@ const GuestPortal = () => {
   const handleBook = () => {
     if (!validatePayment()) return;
     setPaymentStatus('connecting');
-    
-    // Simulate connecting to bank gateway
+
+    // Simulate connecting to bank gateway, then issue a demo OTP.
     setTimeout(() => {
+      setGeneratedOtp(String(Math.floor(100000 + Math.random() * 900000)));
+      setOtp('');
       setPaymentStatus('otp');
     }, 2000);
   };
 
   const handleVerifyOTP = async () => {
     if (otp.length !== 6) return;
-    
+    if (otp !== generatedOtp) {
+      alert('Incorrect OTP. Please enter the OTP shown on screen.');
+      return;
+    }
+
     setPaymentStatus('processing');
     try {
       // 1. Create Reservation
@@ -453,10 +468,9 @@ const GuestPortal = () => {
                 <Users className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <select className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-sm focus:ring-2 focus:ring-[#d4af37] focus:border-transparent outline-none transition-all appearance-none"
                   value={booking.guestCount} onChange={e => handleGuestCountChange(e.target.value)}>
-                  <option value="1">1 Guest</option>
-                  <option value="2">2 Guests</option>
-                  <option value="3">3 Guests</option>
-                  <option value="4">4 Guests</option>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -762,18 +776,22 @@ const GuestPortal = () => {
               <div className="animate-in fade-in duration-300">
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
                   <h3 className="text-lg font-bold text-gray-900">Bank Authentication</h3>
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Former_Visa_%28company%29_logo.svg/1024px-Former_Visa_%28company%29_logo.svg.png" alt="Visa" className="h-6 opacity-80" />
+                  <span aria-label="Visa" className="text-[#1a1f71] font-extrabold italic text-2xl tracking-tight select-none" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>VISA</span>
                 </div>
                 <div className="bg-blue-50 border border-blue-100 p-4 rounded-md mb-6">
                   <p className="text-sm text-blue-900 mb-2">Merchant: <strong>Lumina Resort & Spa</strong></p>
                   <p className="text-sm text-blue-900 mb-2">Amount: <strong>₹{finalTotal.toLocaleString('en-IN')}</strong></p>
                   <p className="text-sm text-blue-900 mb-2">Card: <strong>XXXX-XXXX-XXXX-{payment.cardNumber.slice(-4) || '1234'}</strong></p>
                 </div>
-                <p className="text-gray-700 text-sm mb-4">A One Time Password (OTP) has been sent to your registered mobile number. Please enter it below to authorize this transaction.</p>
+                <p className="text-gray-700 text-sm mb-3">A One Time Password (OTP) has been sent to your registered mobile number. Please enter it below to authorize this transaction.</p>
+                <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-center">
+                  <span className="text-[10px] text-amber-700 uppercase tracking-widest font-bold">Demo OTP</span>
+                  <p className="text-2xl font-mono font-bold tracking-[0.4em] text-amber-900">{generatedOtp}</p>
+                </div>
                 <div className="mb-6">
-                  <input type="text" maxLength="6" placeholder="Enter 6-digit OTP" 
+                  <input type="text" inputMode="numeric" maxLength={6} placeholder="Enter 6-digit OTP"
                     className="w-full text-center tracking-[0.5em] text-2xl px-4 py-3 border border-gray-300 rounded-md outline-none focus:border-blue-500"
-                    value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ''))} />
+                    value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').substring(0, 6))} />
                 </div>
                 <button onClick={handleVerifyOTP} disabled={otp.length !== 6} 
                   className="w-full py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50">
@@ -823,7 +841,7 @@ const GuestPortal = () => {
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Room</p>
-                <p className="text-xl font-serif text-[#1a365d]">{reservation.roomNumber}</p>
+                <p className="text-xl font-serif text-[#1a365d]">{(reservation.roomNumbers && reservation.roomNumbers.length) ? reservation.roomNumbers.join(', ') : 'Assigned at check-in'}</p>
               </div>
             </div>
             
