@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "5000:5000"
+    # Loads environment variables from your backend folder
+    # Make sure MONGO_URI and JWT_SECRET are in backend/.env
+    env_file:
+      - ./backend/.env
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: always

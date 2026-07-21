@@ -1,0 +1,12 @@
+{
+  "name": "docucheck-railway-proxy",
+  "version": "1.0.0",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "install": "cd backend && npm install",
+    "build": "cd backend && npm run build --if-present",
+    "start": "cd backend && npm start"
+  }
+}

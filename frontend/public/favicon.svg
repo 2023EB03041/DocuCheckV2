@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Navy Blue Background with slight rounding for modern luxury feel -->
+  <rect width="32" height="32" fill="#1a365d" rx="6" />
+  
+  <!-- Crisp, bold, geometric 'L' in Gold -->
+  <path d="M10,8 L13,8 L13,21 L22,21 L22,24 L10,24 Z" fill="#d4af37" />
+  
+  <!-- 'Lumina' Star/Sparkle accent in Gold -->
+  <polygon points="23,7 24.5,10.5 28,12 24.5,13.5 23,17 21.5,13.5 18,12 21.5,10.5" fill="#d4af37" />
+</svg>
