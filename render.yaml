@@ -1,0 +1,20 @@
+# Render blueprint — native Node (no container) backend for DocuCheck.
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo/prod branch.
+# Set MONGO_URI and JWT_SECRET in the dashboard (they are marked sync:false).
+services:
+  - type: web
+    name: docucheck-backend
+    runtime: node
+    rootDir: backend
+    branch: prod
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/reservations
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
