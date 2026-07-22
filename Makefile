@@ -1,48 +1,23 @@
 # DocuCheck — Makefile (main branch)
-# Local dev runs the app directly with Node; Docker targets run the containerized stack.
-# Production deploys from the `prod` branch (Cloudflare Pages + Render); `prod` has no Docker.
+# Runs the containerized stack via Docker Compose.
+#   make start  → build and start the app
+#   make stop   → stop the app
+#   make clean  → remove this project's containers, images, and build cache
 
-.PHONY: setup start build clean up down docker-build docker-logs
+.PHONY: start stop clean
 
-## --- Local development (no containers) ---
-
-# Install backend and frontend dependencies
-setup:
-	@echo "Installing backend dependencies..."
-	cd backend && npm install
-	@echo "Installing frontend dependencies..."
-	cd frontend && npm install
-
-# Run backend (http://localhost:5000) and frontend (http://localhost:5173) dev servers
+# Build images and start all services in the background.
+# Override host ports if they conflict, e.g. on macOS:
+#   FRONTEND_PORT=9090 BACKEND_PORT=5002 make start
 start:
-	@echo "Starting backend and frontend dev servers in new terminals..."
-	start cmd /c "cd backend && npm run dev"
-	start cmd /c "cd frontend && npm run dev"
-
-# Build the frontend for production
-build:
-	cd frontend && npm run build
-
-# Remove installed dependencies and build output
-clean:
-	@echo "Removing node_modules and build output..."
-	rm -rf backend/node_modules frontend/node_modules frontend/dist
-
-## --- Docker (containerized stack) ---
-
-# Build and start all services in the background
-up:
 	docker-compose up -d --build
-	@echo "Frontend: http://localhost:8080   Backend: http://localhost:5000"
+	@echo "Frontend: http://localhost:$(or $(FRONTEND_PORT),8080)   Backend: http://localhost:$(or $(BACKEND_PORT),5001)"
 
-# Stop all services
-down:
+# Stop and remove the running containers.
+stop:
 	docker-compose down
 
-# Build Docker images
-docker-build:
-	docker-compose build
-
-# Follow container logs
-docker-logs:
-	docker-compose logs -f
+# Remove this project's containers, images, volumes, orphans, and build cache.
+clean:
+	docker-compose down --rmi all --volumes --remove-orphans
+	docker builder prune -f
