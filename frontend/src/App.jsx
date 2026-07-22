@@ -43,7 +43,7 @@ function App() {
                   <div className="backdrop-blur-md bg-white/10 border border-white/20 p-12 md:p-20 rounded-3xl shadow-2xl flex flex-col items-center max-w-4xl transform transition-all duration-1000 hover:bg-white/20">
                     <span className="text-[#d4af37] tracking-[0.5em] uppercase text-xs md:text-sm font-bold mb-6 drop-shadow-md flex items-center gap-4">
                       <span className="w-12 h-[1px] bg-[#d4af37]"></span>
-                      Welcome to Paradise
+                      Welcome to Tranquility
                       <span className="w-12 h-[1px] bg-[#d4af37]"></span>
                     </span>
                     
@@ -122,7 +122,7 @@ function App() {
               <div className="py-24 bg-[#f8f9fa] border-t border-gray-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <div className="text-center mb-20">
-                    <span className="text-[#d4af37] tracking-[0.3em] uppercase text-sm font-bold mb-4 block">Your Sanctuary</span>
+                    <span className="text-[#d4af37] tracking-[0.3em] uppercase text-sm font-bold mb-4 block">Your Retreat</span>
                     <h2 className="text-5xl font-serif text-[#1a365d] mb-6">Luxurious Accommodations</h2>
                     <div className="w-20 h-1 bg-[#d4af37] mx-auto opacity-70"></div>
                   </div>
@@ -175,7 +175,7 @@ function App() {
                         <span className="font-serif font-bold text-xl tracking-tight">LUMINA</span>
                       </div>
                       <p className="text-gray-300 font-light text-sm leading-relaxed mb-6">
-                        Experience world-class luxury and seamless pre-arrival verification. Skip the front desk and go straight to paradise.
+                        Experience world-class luxury and seamless pre-arrival verification. Skip the front desk and go straight to serenity.
                       </p>
                     </div>
                     
