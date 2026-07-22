@@ -3,8 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, Users, ChevronRight, CheckCircle2, ShieldCheck, UploadCloud, FileText, Loader2, CreditCard, Lock, AlertCircle, Download } from 'lucide-react';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
+import DateField from '../components/DateField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
+
+// Local midnight today, used as the earliest selectable check-in date.
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+// Parse a 'YYYY-MM-DD' string into a local Date.
+const ymdToDate = (s) => { if (!s) return undefined; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 
 const GuestPortal = () => {
   const navigate = useNavigate();
@@ -451,23 +457,23 @@ const GuestPortal = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Check-in</label>
-              <div className="relative">
-                <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="date" 
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-sm focus:ring-2 focus:ring-[#d4af37] focus:border-transparent outline-none transition-all" 
-                  value={booking.checkInDate} onChange={e => setBooking({...booking, checkInDate: e.target.value})} />
-              </div>
+              <DateField
+                icon={Calendar}
+                label="Check-in date"
+                value={booking.checkInDate}
+                minDate={startOfToday()}
+                onChange={(v) => setBooking({ ...booking, checkInDate: v, checkOutDate: booking.checkOutDate && booking.checkOutDate < v ? '' : booking.checkOutDate })}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Check-out</label>
-              <div className="relative">
-                <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="date" 
-                  min={booking.checkInDate || new Date().toISOString().split('T')[0]}
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-sm focus:ring-2 focus:ring-[#d4af37] focus:border-transparent outline-none transition-all"
-                  value={booking.checkOutDate} onChange={e => setBooking({...booking, checkOutDate: e.target.value})} />
-              </div>
+              <DateField
+                icon={Calendar}
+                label="Check-out date"
+                value={booking.checkOutDate}
+                minDate={ymdToDate(booking.checkInDate) || startOfToday()}
+                onChange={(v) => setBooking({ ...booking, checkOutDate: v })}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Guests</label>
