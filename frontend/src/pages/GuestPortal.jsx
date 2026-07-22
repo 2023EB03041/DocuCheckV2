@@ -498,7 +498,7 @@ const GuestPortal = () => {
       {/* Step 2: Room Selection */}
       {step === 2 && (
         <div className="animate-in fade-in slide-in-from-right-8 duration-500">
-          <h2 className="text-3xl font-serif text-[#1a365d] mb-8 text-center">Select Your Sanctuary</h2>
+          <h2 className="text-3xl font-serif text-[#1a365d] mb-8 text-center">Select Your Haven</h2>
           
           {loading ? (
             <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-[#d4af37]" /></div>
