@@ -9,14 +9,6 @@ class RoomRepository {
     return await Room.find({ type: roomType, status: 'Available' }).limit(limit);
   }
 
-  async countRooms() {
-    return await Room.countDocuments();
-  }
-
-  async insertMany(rooms) {
-    return await Room.insertMany(rooms);
-  }
-
   async saveRoom(room) {
     return await room.save();
   }

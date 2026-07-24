@@ -1,7 +1,5 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import verifyController from '../controllers/verifyController.js';
 
 const router = express.Router();
