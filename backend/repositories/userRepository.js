@@ -9,10 +9,6 @@ class UserRepository {
     const newUser = new User(userData);
     return await newUser.save();
   }
-
-  async countUsers() {
-    return await User.countDocuments();
-  }
 }
 
 export default new UserRepository();

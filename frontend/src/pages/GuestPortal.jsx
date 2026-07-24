@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Users, ChevronRight, CheckCircle2, ShieldCheck, UploadCloud, FileText, Loader2, CreditCard, Lock, AlertCircle, Download } from 'lucide-react';
+import { Calendar, Users, ChevronRight, CheckCircle2, ShieldCheck, UploadCloud, Loader2, CreditCard, Lock, AlertCircle, Download } from 'lucide-react';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import DateField from '../components/DateField';

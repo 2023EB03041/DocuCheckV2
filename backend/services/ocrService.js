@@ -1,7 +1,5 @@
 import Tesseract from 'tesseract.js';
-import fs from 'fs';
 import { Jimp } from 'jimp';
-import path from 'path';
 
 // Known keywords that appear on valid IDs
 const VALID_DOCUMENT_SIGNATURES = [

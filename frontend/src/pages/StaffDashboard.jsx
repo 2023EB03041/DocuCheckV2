@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, DoorOpen, Search, LogOut, CheckCircle2, X, FileText, ShieldCheck, User, ChevronDown, ChevronUp, BookOpen, CreditCard, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, DoorOpen, Search, LogOut, CheckCircle2, X, FileText, ShieldCheck, User, ChevronDown, ChevronUp, BookOpen, CreditCard } from 'lucide-react';
 import axios from 'axios';
 import StaffLogin from './StaffLogin';
 
