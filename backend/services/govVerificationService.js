@@ -94,6 +94,134 @@ const normalizePan = (idNumber) => {
   return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(candidate) ? candidate : '';
 };
 
+const normalizeAadhaar = (idNumber) => {
+  const digits = (idNumber || '').replace(/\D/g, '');
+  return /^[0-9]{12}$/.test(digits) ? digits : '';
+};
+
+/**
+ * Compares a name held by an authority with the one printed on the document.
+ * Matching on parts keeps middle names and initials from failing a genuine
+ * card, while still catching a different person entirely.
+ */
+const namesAgree = (officialName, documentName) => {
+  const parts = (documentName || '').toLowerCase().split(/\s+/).filter(p => p.length > 2);
+  if (!parts.length) return false;
+
+  const official = (officialName || '').toLowerCase();
+  return parts.filter(part => official.includes(part)).length / parts.length >= 0.5;
+};
+
+const sameDate = (a, b) => {
+  const digits = value => (value || '').replace(/\D/g, '');
+  const left = digits(a);
+  const right = digits(b);
+  return left.length === 8 && left === right;
+};
+
+const postJson = async (path, body) => {
+  const token = await getAccessToken();
+
+  const response = await fetch(`${getBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': token,
+      'x-api-key': process.env.SANDBOX_API_KEY,
+      'x-api-version': '2.0',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  });
+
+  return { ok: response.ok, status: response.status, payload: await response.json().catch(() => ({})) };
+};
+
+/**
+ * Checks an Aadhaar against the UIDAI record. UIDAI only releases details
+ * against a one time password, so the server can complete this on its own
+ * only where that password is a known fixed value, which is the case in the
+ * test environment. Without one the document is reported as unconfirmed
+ * rather than being waved through.
+ */
+const verifyAadhaar = async ({ idNumber, name, dob }) => {
+  const aadhaar = normalizeAadhaar(idNumber);
+  if (!aadhaar) {
+    return {
+      checked: false,
+      verified: false,
+      remarks: 'Aadhaar number could not be read from the document.'
+    };
+  }
+
+  const otp = process.env.AADHAAR_DEV_OTP;
+  if (!otp) {
+    return {
+      checked: false,
+      verified: false,
+      remarks: 'Aadhaar cannot be confirmed automatically — UIDAI requires a one-time password sent to the registered mobile number.'
+    };
+  }
+
+  const requested = await postJson('/kyc/aadhaar/okyc/otp', {
+    '@entity': 'in.co.sandbox.kyc.aadhaar.okyc.otp.request',
+    aadhaar_number: aadhaar,
+    consent: 'Y',
+    reason: VERIFICATION_REASON
+  });
+
+  const referenceId = requested.payload?.data?.reference_id;
+  if (!requested.ok || !referenceId) {
+    return {
+      checked: false,
+      verified: false,
+      remarks: `This Aadhaar could not be checked (HTTP ${requested.status}).`
+    };
+  }
+
+  const confirmed = await postJson('/kyc/aadhaar/okyc/otp/verify', {
+    '@entity': 'in.co.sandbox.kyc.aadhaar.okyc.request',
+    reference_id: String(referenceId),
+    otp: String(otp)
+  });
+
+  if (!confirmed.ok) {
+    return {
+      checked: false,
+      verified: false,
+      remarks: `This Aadhaar could not be confirmed (HTTP ${confirmed.status}).`
+    };
+  }
+
+  const holder = confirmed.payload?.data || {};
+  const nameMatches = namesAgree(holder.name, name);
+  const dobKnown = !!holder.date_of_birth && !!dob;
+  const dobMatches = dobKnown ? sameDate(holder.date_of_birth, dob) : true;
+  const verified = !!holder.name && nameMatches && dobMatches;
+
+  let remarks;
+  if (!holder.name) {
+    remarks = 'UIDAI returned no details for this Aadhaar.';
+  } else if (!nameMatches) {
+    remarks = 'The name held by UIDAI does not match the name on this card.';
+  } else if (!dobMatches) {
+    remarks = 'The date of birth held by UIDAI does not match this card.';
+  } else {
+    remarks = 'Aadhaar confirmed against the UIDAI record.';
+  }
+
+  return {
+    checked: true,
+    verified,
+    remarks,
+    transactionId: confirmed.payload?.transaction_id || null,
+    details: {
+      nameMatch: nameMatches,
+      dateOfBirthMatch: dobMatches
+    }
+  };
+};
+
 /**
  * Checks a PAN against the Income Tax department record, confirming that the
  * card exists and that the name and date of birth printed on it match.
@@ -182,13 +310,13 @@ const verifyPan = async ({ idNumber, name, dob }) => {
 };
 
 /**
- * Document types that can be confirmed against a government record without the
- * holder completing a consent step. Aadhaar requires an OTP sent to the number
- * registered with UIDAI, and driving licence and passport are not available, so
- * those are recorded as read-but-unconfirmed rather than being checked here.
+ * Document types that can be checked from the details on the card alone.
+ * Driving licence, passport and voter ID have no record to query, so they are
+ * recorded as read-but-unconfirmed rather than being checked here.
  */
 const VERIFIERS = {
-  pan: verifyPan
+  pan: verifyPan,
+  aadhaar: verifyAadhaar
 };
 
 const normalizeIdType = (idType) => {
