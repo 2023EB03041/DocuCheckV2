@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import reservationRepository from '../repositories/reservationRepository.js';
 import IdDocument from '../models/IdDocument.js';
-import { verifyDocumentAI, extractDocumentDetailsAI } from './documentAIService.js';
+import { verifyDocument, extractDocumentDetails } from './documentReaderService.js';
 import { verifyAgainstGovernmentRecord, VERIFICATION_LEVEL } from './govVerificationService.js';
 
 // A document that no government record confirms is rejected outright. Set
@@ -95,7 +95,7 @@ class VerifyService {
       }
     }
 
-    const extractionResult = await attachVerification(await extractDocumentDetailsAI(fileBuffer));
+    const extractionResult = await attachVerification(await extractDocumentDetails(fileBuffer));
 
     return extractionResult;
   }
@@ -114,7 +114,7 @@ class VerifyService {
     const guest = reservation.guests[index];
     const fileBuffer = file.buffer;
     
-    const verificationResult = await attachVerification(await verifyDocumentAI(fileBuffer, guest.name));
+    const verificationResult = await attachVerification(await verifyDocument(fileBuffer, guest.name));
 
     const documentHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
     

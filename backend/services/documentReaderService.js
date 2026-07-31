@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI as GenerativeClient, SchemaType } from '@google/generative-ai';
 
 const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 
@@ -56,7 +56,7 @@ const getClient = () => {
     throw new Error('GEMINI_API_KEY is not configured');
   }
   if (!cachedClient) {
-    cachedClient = new GoogleGenerativeAI(apiKey);
+    cachedClient = new GenerativeClient(apiKey);
   }
   return cachedClient;
 };
@@ -176,7 +176,7 @@ export const readDocumentFields = async (imageBuffer) => {
   };
 };
 
-export const extractDocumentDetailsAI = async (imageBuffer) => {
+export const extractDocumentDetails = async (imageBuffer) => {
   try {
     const document = await readDocumentFields(imageBuffer);
 
@@ -228,7 +228,7 @@ export const extractDocumentDetailsAI = async (imageBuffer) => {
   }
 };
 
-export const verifyDocumentAI = async (imageBuffer, expectedName) => {
+export const verifyDocument = async (imageBuffer, expectedName) => {
   try {
     const document = await readDocumentFields(imageBuffer);
 
