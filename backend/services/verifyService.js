@@ -114,7 +114,7 @@ class VerifyService {
     const guest = reservation.guests[index];
     const fileBuffer = file.buffer;
     
-    const ocrResult = await attachVerification(await verifyDocumentAI(fileBuffer, guest.name));
+    const verificationResult = await attachVerification(await verifyDocumentAI(fileBuffer, guest.name));
 
     const documentHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
     
@@ -145,19 +145,19 @@ class VerifyService {
     guest.documentHash = documentHash;
     // With verification required, success already implies a government record
     // confirmed the document, so it alone decides the guest's standing.
-    guest.status = ocrResult.success ? 'Verified' : 'Failed';
+    guest.status = verificationResult.success ? 'Verified' : 'Failed';
     guest.documentUrl = `/api/documents/${savedDocument._id}`; // Secure authenticated route
     guest.verificationDetails = {
       // The name read off the card, rather than a slice of the raw document
       // text, which can carry the document number.
-      extractedName: (ocrResult.extractedName || '').substring(0, 50),
-      confidenceScore: ocrResult.confidenceScore,
+      extractedName: (verificationResult.extractedName || '').substring(0, 50),
+      confidenceScore: verificationResult.confidenceScore,
       verificationTime: new Date(),
-      remarks: ocrResult.verificationRemarks
-        ? `${ocrResult.remarks} ${ocrResult.verificationRemarks}`
-        : ocrResult.remarks,
-      verificationLevel: ocrResult.verificationLevel,
-      governmentVerified: ocrResult.governmentVerified === true
+      remarks: verificationResult.verificationRemarks
+        ? `${verificationResult.remarks} ${verificationResult.verificationRemarks}`
+        : verificationResult.remarks,
+      verificationLevel: verificationResult.verificationLevel,
+      governmentVerified: verificationResult.governmentVerified === true
     };
 
     await reservationRepository.saveReservation(reservation);
@@ -165,7 +165,7 @@ class VerifyService {
     return {
       message: `Verification completed for guest ${index + 1}`,
       status: guest.status,
-      details: ocrResult
+      details: verificationResult
     };
   }
 }
