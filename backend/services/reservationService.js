@@ -1,13 +1,42 @@
 import reservationRepository from '../repositories/reservationRepository.js';
 import roomRepository from '../repositories/roomRepository.js';
 
+// A stay counts as finished once its check-out date is behind us; the guest is
+// still in-house on the check-out date itself, so the boundary is midnight today.
+const departureCutoff = () => {
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  return cutoff;
+};
+
 class ReservationService {
+  // Frees rooms whose stay has ended so inventory stops showing a departed
+  // guest. Runs before any read of or search over the inventory, which keeps
+  // check-out automatic without a scheduled job.
+  async releaseExpiredRooms() {
+    const cutoff = departureCutoff();
+    const heldRooms = await roomRepository.findRoomsWithReservation();
+    const expiredRoomIds = heldRooms
+      .filter(room => room.currentReservation && new Date(room.currentReservation.checkOutDate) < cutoff)
+      .map(room => room._id);
+
+    if (expiredRoomIds.length > 0) {
+      await roomRepository.releaseRooms(expiredRoomIds);
+    }
+    return expiredRoomIds.length;
+  }
+
   async getAllRooms() {
+    await this.releaseExpiredRooms();
     return await roomRepository.getAllRooms();
   }
 
-  async getAllReservations() {
-    return await reservationRepository.getAllReservations();
+  async getActiveReservations() {
+    return await reservationRepository.getActiveReservations(departureCutoff());
+  }
+
+  async getPastReservations() {
+    return await reservationRepository.getPastReservations(departureCutoff());
   }
 
   async getReservationById(reservationId) {
@@ -22,6 +51,9 @@ class ReservationService {
     const { guests, email, phone, roomType, totalPrice, checkInDate, checkOutDate } = bookingData;
     
     const requiredRoomsCount = Math.ceil((guests?.length || 1) / 2);
+
+    // Reclaim departed guests' rooms first so they can be resold immediately.
+    await this.releaseExpiredRooms();
 
     const availableRooms = await roomRepository.findAvailableRooms(roomType, requiredRoomsCount);
     

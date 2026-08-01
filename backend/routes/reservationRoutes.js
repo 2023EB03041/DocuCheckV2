@@ -8,9 +8,12 @@ const router = express.Router();
 // confirmation via the unguessable booking ID (capability URL).
 router.get('/rooms', reservationController.getRooms);
 router.post('/', reservationController.createReservation);
-router.get('/:id', reservationController.getReservationById);
 
-// Staff-only: listing every reservation exposes all guests' personal data.
+// Staff-only: listing reservations exposes all guests' personal data.
+// Both must be declared before '/:id' so they are not swallowed by it.
+router.get('/records', authMiddleware, reservationController.getReservationRecords);
 router.get('/', authMiddleware, reservationController.getReservations);
+
+router.get('/:id', reservationController.getReservationById);
 
 export default router;
