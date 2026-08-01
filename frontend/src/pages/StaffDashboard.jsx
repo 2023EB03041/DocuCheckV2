@@ -567,8 +567,12 @@ const StaffDashboard = () => {
                                         </a>
                                       )}
                                       {g.verificationDetails && g.status === 'Verified' && (
-                                        <p className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100 truncate ml-auto">
-                                          OCR Match: {Math.round((g.verificationDetails.confidenceScore || 1) * 100)}%
+                                        <p className={`text-[10px] px-2 py-0.5 rounded border truncate ml-auto ${
+                                          g.verificationDetails.governmentVerified
+                                            ? 'text-green-600 bg-green-50 border-green-100'
+                                            : 'text-amber-600 bg-amber-50 border-amber-100'
+                                        }`}>
+                                          {g.verificationDetails.governmentVerified ? 'Government Verified' : 'Details Read Only'}
                                         </p>
                                       )}
                                     </div>
@@ -922,8 +926,8 @@ const StaffDashboard = () => {
                             
                             {guest.verificationDetails && (
                               <div className="mt-3 bg-white/50 p-3 rounded text-xs text-gray-600 space-y-1 border border-white/40">
-                                <p><strong>OCR Match:</strong> {guest.verificationDetails.extractedName || 'N/A'}</p>
-                                <p><strong>Confidence:</strong> {Math.round((guest.verificationDetails.confidenceScore || 0) * 100)}%</p>
+                                <p><strong>Name on ID:</strong> {guest.verificationDetails.extractedName || 'N/A'}</p>
+                                <p><strong>Verification:</strong> {guest.verificationDetails.governmentVerified ? 'Confirmed against government record' : 'Read from document only'}</p>
                                 <p><strong>System Note:</strong> {guest.verificationDetails.remarks}</p>
                               </div>
                             )}

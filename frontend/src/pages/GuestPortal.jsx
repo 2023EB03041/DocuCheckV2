@@ -107,7 +107,7 @@ const GuestPortal = () => {
     try {
       const res = await axios.post(`${API_URL}/verify/extract`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000 // OCR on the free tier can be slow / cold-start
+        timeout: 120000 // reading the document and checking it can be slow on a cold start
       });
 
       const { success, extractedName, extractedAge, extractedSex, error } = res.data;

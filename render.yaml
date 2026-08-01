@@ -18,3 +18,19 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      # Document reading. The key is set in the dashboard, never in the repo.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      # Record verification. Test credentials only — a live key is refused.
+      - key: SANDBOX_API_KEY
+        sync: false
+      - key: SANDBOX_API_SECRET
+        sync: false
+      # Password the published sample records are issued with, so a check needs
+      # nothing from the guest.
+      - key: AADHAAR_DEV_OTP
+        value: "121212"
+      - key: REQUIRE_GOVERNMENT_VERIFICATION
+        value: "true"
