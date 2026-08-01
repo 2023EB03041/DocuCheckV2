@@ -148,8 +148,6 @@ class VerifyService {
     guest.status = verificationResult.success ? 'Verified' : 'Failed';
     guest.documentUrl = `/api/documents/${savedDocument._id}`; // Secure authenticated route
     guest.verificationDetails = {
-      // The name read off the card, rather than a slice of the raw document
-      // text, which can carry the document number.
       extractedName: (verificationResult.extractedName || '').substring(0, 50),
       confidenceScore: verificationResult.confidenceScore,
       verificationTime: new Date(),

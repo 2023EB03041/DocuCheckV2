@@ -138,11 +138,11 @@ const titleCase = (value) => {
 };
 
 /**
- * Sends the image upstream and returns the parsed document fields.
- * Exported so the verification layer can reach the document number and
- * printed date of birth, which the summarised results below discard.
+ * Sends the image upstream and returns the parsed document fields. The two
+ * results below summarise these, and carry the document itself so the
+ * verification layer can reach the number and printed date of birth.
  */
-export const readDocumentFields = async (imageBuffer) => {
+const readDocumentFields = async (imageBuffer) => {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
     throw new Error('Empty image buffer');
   }
@@ -235,7 +235,6 @@ export const verifyDocument = async (imageBuffer, expectedName) => {
     if (!document.isIdDocument) {
       return {
         success: false,
-        extractedText: document.rawText,
         extractedName: '',
         extractedAge: null,
         extractedSex: '',
@@ -268,7 +267,6 @@ export const verifyDocument = async (imageBuffer, expectedName) => {
 
     return {
       success: !!isVerified,
-      extractedText: document.rawText,
       extractedName,
       extractedAge,
       extractedSex,
@@ -284,7 +282,6 @@ export const verifyDocument = async (imageBuffer, expectedName) => {
     console.error('Document verification error:', error.message);
     return {
       success: false,
-      extractedText: '',
       extractedName: '',
       extractedAge: null,
       extractedSex: '',
