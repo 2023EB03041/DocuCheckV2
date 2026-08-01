@@ -246,7 +246,9 @@ export const verifyDocument = async (imageBuffer, expectedName) => {
 
     const extractedName = document.name;
     const extractedAge = calculateAge(document.dob);
-    const extractedSex = document.gender;
+    // A PAN card carries no gender, so the same fallback is applied here as on
+    // the extraction path — both report a card the same way.
+    const extractedSex = document.gender || 'Other';
 
     // Score the booking name against both the extracted name and the full
     // document text, so a partially readable card still verifies.

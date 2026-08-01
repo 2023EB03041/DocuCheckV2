@@ -1,9 +1,16 @@
+// This integration talks only to the test environment. It answers from a fixed
+// set of published sample records, so no real person's details are ever sent
+// and no check is ever billed.
 const TEST_BASE_URL = 'https://test-api.sandbox.co.in';
-const LIVE_BASE_URL = 'https://api.sandbox.co.in';
 
-// Sent with every verification request as the stated purpose. The upstream
-// contract requires at least 20 characters here.
-const VERIFICATION_REASON = 'Guest identity verification for hotel check-in';
+// The test environment replays saved examples and only answers a request whose
+// body matches one exactly, so the stated purpose has to be the wording the
+// example for that endpoint uses. Each endpoint was written up separately
+// upstream, so the wording differs between them.
+const TEST_REASONS = {
+  aadhaar: 'For KYC',
+  pan: 'For onboarding customers'
+};
 
 // An upstream call that stops responding must not hold the upload open.
 const REQUEST_TIMEOUT_MS = 30000;
@@ -15,32 +22,26 @@ export const VERIFICATION_LEVEL = {
   FAILED: 'failed'
 };
 
-let warnedAboutLive = false;
+const getBaseUrl = () => TEST_BASE_URL;
+
+const getVerificationReason = (endpoint) => TEST_REASONS[endpoint];
 
 /**
- * Test and production each accept only their own credentials, so the target is
- * taken from the key prefix unless SANDBOX_ENV overrides it. Live keys are
- * billed per successful verification, so their use is announced once.
+ * Only test credentials are accepted. A live key would be charged per check and
+ * would send a real person's details upstream, so it is refused outright rather
+ * than used by accident.
  */
-const getBaseUrl = () => {
-  const override = (process.env.SANDBOX_ENV || '').toLowerCase();
-  const key = process.env.SANDBOX_API_KEY || '';
+const isConfigured = () => {
+  const key = process.env.SANDBOX_API_KEY;
+  const secret = process.env.SANDBOX_API_SECRET;
+  if (!key || !secret) return false;
 
-  let live;
-  if (override === 'production') live = true;
-  else if (override === 'test') live = false;
-  else live = key.startsWith('key_live');
-
-  if (live && !warnedAboutLive) {
-    warnedAboutLive = true;
-    console.warn('Verification is using live credentials — each successful check is billed.');
+  if (key.startsWith('key_live') || secret.startsWith('secret_live')) {
+    console.warn('Refusing to verify: live credentials are configured, but only test credentials are supported.');
+    return false;
   }
 
-  return live ? LIVE_BASE_URL : TEST_BASE_URL;
-};
-
-const isConfigured = () => {
-  return !!(process.env.SANDBOX_API_KEY && process.env.SANDBOX_API_SECRET);
+  return true;
 };
 
 // Access tokens are valid for 24 hours, so they are held in memory and reused.
@@ -166,8 +167,8 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
   const requested = await postJson('/kyc/aadhaar/okyc/otp', {
     '@entity': 'in.co.sandbox.kyc.aadhaar.okyc.otp.request',
     aadhaar_number: aadhaar,
-    consent: 'Y',
-    reason: VERIFICATION_REASON
+    consent: 'y',
+    reason: getVerificationReason('aadhaar')
   });
 
   const referenceId = requested.payload?.data?.reference_id;
@@ -176,6 +177,17 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
       checked: false,
       verified: false,
       remarks: `This Aadhaar could not be checked (HTTP ${requested.status}).`
+    };
+  }
+
+  // An unknown Aadhaar is still answered with a reference id, so the message
+  // has to be read before treating the number as one worth confirming.
+  const requestMessage = requested.payload?.data?.message || '';
+  if (/invalid aadhaar/i.test(requestMessage)) {
+    return {
+      checked: true,
+      verified: false,
+      remarks: 'UIDAI does not recognise this Aadhaar number.'
     };
   }
 
@@ -194,6 +206,20 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
   }
 
   const holder = confirmed.payload?.data || {};
+
+  // A one time password that was wrong, expired or still being processed is
+  // answered with an ordinary success status carrying only a message. None of
+  // these say anything about the card, so the guest is not failed for them.
+  if ((holder.status || '').toUpperCase() !== 'VALID') {
+    return {
+      checked: false,
+      verified: false,
+      remarks: holder.message
+        ? `Aadhaar could not be confirmed: ${holder.message}.`
+        : 'Aadhaar could not be confirmed by UIDAI.'
+    };
+  }
+
   const nameMatches = namesAgree(holder.name, name);
   const dobKnown = !!holder.date_of_birth && !!dob;
   const dobMatches = dobKnown ? sameDate(holder.date_of_birth, dob) : true;
@@ -261,7 +287,7 @@ const verifyPan = async ({ idNumber, name, dob }) => {
       name_as_per_pan: name,
       date_of_birth: dateOfBirth,
       consent: 'Y',
-      reason: VERIFICATION_REASON
+      reason: getVerificationReason('pan')
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   });
