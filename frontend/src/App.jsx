@@ -5,7 +5,9 @@ import StaffDashboard from './pages/StaffDashboard';
 function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans">
-      <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-10">
+      {/* z-40 keeps the sticky bar above page content (the hero's blurred card
+          also sits at z-10) while staying below the z-50 modals and dropdowns. */}
+      <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
             <div className="flex items-center gap-3">

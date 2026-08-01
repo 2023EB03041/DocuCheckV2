@@ -19,3 +19,12 @@ dist/
 
 # Vite cache
 .vite/
+
+# Frontend lockfile is regenerated during CI (avoids cross-platform npm ci mismatch)
+frontend/package-lock.json
+
+# Local test ID documents - never commit real identity documents
+adhar_front.jpg
+*_front.jpg
+*_back.jpg
+test-ids/

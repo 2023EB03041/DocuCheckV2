@@ -13,4 +13,11 @@ router.get('/:id', reservationController.getReservationById);
 // Staff-only: listing every reservation exposes all guests' personal data.
 router.get('/', authMiddleware, reservationController.getReservations);
 
+// Staff-only: listing reservations exposes all guests' personal data.
+// Both must be declared before '/:id' so they are not swallowed by it.
+router.get('/records', authMiddleware, reservationController.getReservationRecords);
+router.get('/', authMiddleware, reservationController.getReservations);
+
+router.get('/:id', reservationController.getReservationById);
+
 export default router;

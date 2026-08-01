@@ -18,7 +18,11 @@ const reservationSchema = new mongoose.Schema({
       extractedName: String,
       confidenceScore: Number,
       verificationTime: Date,
-      remarks: String
+      remarks: String,
+      // How strongly the identity was established: confirmed against a
+      // government record, or read off the document but not confirmed.
+      verificationLevel: { type: String, enum: ['government', 'extraction-only', 'failed'] },
+      governmentVerified: { type: Boolean, default: false }
     }
   }],
   email: String,

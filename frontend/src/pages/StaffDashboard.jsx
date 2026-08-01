@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, DoorOpen, Search, LogOut, CheckCircle2, X, FileText, ShieldCheck, User, ChevronDown, ChevronUp, BookOpen, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Users, DoorOpen, Search, LogOut, CheckCircle2, X, FileText, ShieldCheck, User, ChevronDown, ChevronUp, BookOpen, CreditCard, Archive, CalendarCheck } from 'lucide-react';
 import axios from 'axios';
 import StaffLogin from './StaffLogin';
 
@@ -9,11 +9,13 @@ const StaffDashboard = () => {
   const [user, setUser] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRes, setExpandedRes] = useState(null);
+  const [expandedRecord, setExpandedRecord] = useState(null);
   const [inventoryView, setInventoryView] = useState('tier');
   const [documentModalUrl, setDocumentModalUrl] = useState(null);
   const [docHidden, setDocHidden] = useState(false); // hide the secure doc on focus loss / capture attempt
@@ -39,12 +41,14 @@ const StaffDashboard = () => {
     
     const fetchData = async () => {
       try {
-        const [roomsRes, resRes] = await Promise.all([
+        const [roomsRes, resRes, recordsRes] = await Promise.all([
           axios.get(`${API_URL}/reservations/rooms`),
-          axios.get(`${API_URL}/reservations`, { headers: authHeader() })
+          axios.get(`${API_URL}/reservations`, { headers: authHeader() }),
+          axios.get(`${API_URL}/reservations/records`, { headers: authHeader() })
         ]);
         setRooms(roomsRes.data);
         setReservations(resRes.data);
+        setRecords(recordsRes.data);
       } catch (error) {
         console.error('Error fetching data:', error);
         if (error.response && error.response.status === 401) {
@@ -186,17 +190,34 @@ const StaffDashboard = () => {
     return false;
   });
 
-  const filteredReservations = reservations.filter(res => {
+  const matchesReservationQuery = (res) => {
     if (!searchQuery) return true;
     if (res.reservationId && res.reservationId.toLowerCase().includes(lowerQuery)) return true;
     if (res.phone && res.phone.includes(lowerQuery)) return true;
     if (res.email && res.email.toLowerCase().includes(lowerQuery)) return true;
     return false;
+  };
+
+  const filteredReservations = reservations.filter(matchesReservationQuery);
+
+  const filteredRecords = records.filter(res => {
+    if (matchesReservationQuery(res)) return true;
+    if (!searchQuery) return true;
+    if (res._id && res._id.toLowerCase().includes(lowerQuery)) return true;
+    if (res.roomNumbers && res.roomNumbers.some(n => n.toString().includes(lowerQuery))) return true;
+    return (res.guests || []).some(g => g.name && g.name.toLowerCase().includes(lowerQuery));
   });
 
-  const totalRevenue = reservations.reduce((sum, res) => sum + (res.totalPrice || 0), 0);
-  const totalGuestsCount = allGuests.length;
-  const totalVerifiedGuests = allGuests.filter(g => g.status === 'Verified').length;
+  // Reports cover the whole book of business, so past stays count too.
+  const allStays = [...reservations, ...records];
+  const totalRevenue = allStays.reduce((sum, res) => sum + (res.totalPrice || 0), 0);
+  const everyGuest = allStays.flatMap(res => res.guests || []);
+  const totalGuestsCount = everyGuest.length;
+  const totalVerifiedGuests = everyGuest.filter(g => g.status === 'Verified').length;
+  const archivedNights = records.reduce((sum, res) => {
+    const nights = Math.round((new Date(res.checkOutDate) - new Date(res.checkInDate)) / 86400000);
+    return sum + (nights > 0 ? nights : 0);
+  }, 0);
 
   return (
     <div className="flex h-[calc(100vh-5rem)] bg-[#fcfbf9]">
@@ -214,7 +235,10 @@ const StaffDashboard = () => {
             <button onClick={() => setActiveTab('reservations')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-md font-medium text-sm transition-colors ${activeTab === 'reservations' ? 'bg-[#1a365d] text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
               <BookOpen className="w-4 h-4" /> Reservations
             </button>
-            
+            <button onClick={() => setActiveTab('records')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-md font-medium text-sm transition-colors ${activeTab === 'records' ? 'bg-[#1a365d] text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
+              <Archive className="w-4 h-4" /> Records
+            </button>
+
             {user.role === 'Superuser' && (
               <>
                 <button onClick={() => setActiveTab('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-md font-medium text-sm transition-colors ${activeTab === 'reports' ? 'bg-[#1a365d] text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
@@ -289,7 +313,7 @@ const StaffDashboard = () => {
                     <p className="text-4xl font-serif text-[#1a365d]">{occupiedRooms} <span className="text-lg text-gray-400">/ {rooms.length}</span></p>
                   </div>
                   <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Total Reservations</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Active Reservations</p>
                     <p className="text-4xl font-serif text-[#1a365d]">{reservations.length}</p>
                   </div>
                   <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
@@ -543,8 +567,12 @@ const StaffDashboard = () => {
                                         </a>
                                       )}
                                       {g.verificationDetails && g.status === 'Verified' && (
-                                        <p className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100 truncate ml-auto">
-                                          OCR Match: {Math.round((g.verificationDetails.confidenceScore || 1) * 100)}%
+                                        <p className={`text-[10px] px-2 py-0.5 rounded border truncate ml-auto ${
+                                          g.verificationDetails.governmentVerified
+                                            ? 'text-green-600 bg-green-50 border-green-100'
+                                            : 'text-amber-600 bg-amber-50 border-amber-100'
+                                        }`}>
+                                          {g.verificationDetails.governmentVerified ? 'Government Verified' : 'Details Read Only'}
                                         </p>
                                       )}
                                     </div>
@@ -560,6 +588,178 @@ const StaffDashboard = () => {
                   }) : (
                     <div className="bg-white p-10 text-center text-gray-500 rounded-xl border border-gray-200 shadow-sm">
                       No reservations found matching your search.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'records' && (
+              <div className="pb-10">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wider text-xs">Records &mdash; Departed Stays</h2>
+                  <span className="text-[11px] text-gray-500">Archived automatically once the check-out date passes</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Archived Stays</p>
+                    <p className="text-4xl font-serif text-[#1a365d]">{records.length}</p>
+                  </div>
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Guests Hosted</p>
+                    <p className="text-4xl font-serif text-[#1a365d]">{records.reduce((sum, res) => sum + (res.guests?.length || 0), 0)}</p>
+                  </div>
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Room Nights Sold</p>
+                    <p className="text-4xl font-serif text-[#1a365d]">{archivedNights}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {filteredRecords.length > 0 ? filteredRecords.map((res) => {
+                    const isExpanded = expandedRecord === res._id;
+                    const nights = Math.max(0, Math.round((new Date(res.checkOutDate) - new Date(res.checkInDate)) / 86400000));
+
+                    return (
+                      <div key={res._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
+                        <div
+                          className="p-5 flex flex-col md:flex-row items-center justify-between cursor-pointer hover:bg-gray-50"
+                          onClick={() => setExpandedRecord(isExpanded ? null : res._id)}
+                        >
+                          <div className="flex items-center gap-6 w-full md:w-auto">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+                              <CalendarCheck className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase font-bold tracking-wide">Res ID</p>
+                              <p className="font-mono font-medium text-[#1a365d]">{res.reservationId}</p>
+                            </div>
+                            <div className="hidden sm:block">
+                              <p className="text-xs text-gray-500 uppercase font-bold tracking-wide">Stay</p>
+                              <p className="text-gray-700 text-sm">{new Date(res.checkInDate).toLocaleDateString()} - {new Date(res.checkOutDate).toLocaleDateString()}</p>
+                            </div>
+                            <div className="hidden md:block">
+                              <p className="text-xs text-gray-500 uppercase font-bold tracking-wide">Room(s)</p>
+                              <p className="text-gray-700 text-sm">{res.roomNumbers?.length ? res.roomNumbers.join(', ') : '-'}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-6 mt-4 md:mt-0 w-full md:w-auto justify-between md:justify-end">
+                            <span className="bg-gray-100 text-gray-600 text-xs font-bold px-3 py-1 rounded-full">Checked Out</span>
+                            <div className="text-gray-400">
+                              {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="border-t border-gray-100 bg-gray-50 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-top-2 duration-200">
+
+                            <div className="space-y-6">
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-2 mb-3">Stay Summary</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="text-xs text-gray-500">Room Type</p>
+                                    <p className="font-medium">{res.roomType || '-'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Assigned Room(s)</p>
+                                    <p className="font-medium text-[#1a365d]">{res.roomNumbers?.length ? `Room ${res.roomNumbers.join(', ')}` : 'Not Assigned'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Nights</p>
+                                    <p className="font-medium">{nights}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Total Paid</p>
+                                    <p className="font-medium text-green-600 flex items-center gap-1"><CreditCard className="w-4 h-4" /> ₹{(res.totalPrice || 0).toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Email</p>
+                                    <p className="text-sm break-all">{res.email || '-'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Phone</p>
+                                    <p className="text-sm">{res.phone || '-'}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-2 mb-3">Identifiers</h4>
+                                <div className="space-y-3 text-xs">
+                                  <div>
+                                    <p className="text-gray-500">Reservation ID</p>
+                                    <p className="font-mono text-gray-800 break-all">{res.reservationId}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500">Record ID</p>
+                                    <p className="font-mono text-gray-800 break-all">{res._id}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500">Booked On</p>
+                                    <p className="font-mono text-gray-800">{res.createdAt ? new Date(res.createdAt).toLocaleString() : '-'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500">Last Updated</p>
+                                    <p className="font-mono text-gray-800">{res.updatedAt ? new Date(res.updatedAt).toLocaleString() : '-'}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-2 mb-3">Guest Manifest ({res.guests?.length || 0})</h4>
+                              <div className="space-y-4">
+                                {(res.guests || []).map((g, i) => (
+                                  <div key={g._id || i} className="bg-white p-3 rounded border border-gray-200 shadow-sm flex flex-col gap-2">
+                                    <div className="flex justify-between items-start">
+                                      <p className="font-medium text-[#1a365d]">{toTitleCase(g.name)}</p>
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        g.status === 'Verified' ? 'bg-green-100 text-green-700' :
+                                        g.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
+                                      }`}>
+                                        {g.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex gap-4 text-xs text-gray-500">
+                                      <p>Age: {g.age || '-'}</p>
+                                      <p>Sex: {g.sex || '-'}</p>
+                                      <p>ID: {g.idType}</p>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 space-y-1 border-t border-gray-100 pt-2">
+                                      <p>Guest ID: <span className="font-mono text-gray-700 break-all">{g._id || '-'}</span></p>
+                                      <p>Document Hash: <span className="font-mono text-gray-700 break-all">{g.documentHash || '-'}</span></p>
+                                      {g.verificationDetails?.verificationTime && (
+                                        <p>Verified On: <span className="font-mono text-gray-700">{new Date(g.verificationDetails.verificationTime).toLocaleString()}</span></p>
+                                      )}
+                                      {g.verificationDetails?.remarks && (
+                                        <p>Remarks: <span className="text-gray-700">{g.verificationDetails.remarks}</span></p>
+                                      )}
+                                    </div>
+                                    {g.documentUrl && (
+                                      <a
+                                        href="#"
+                                        onClick={(e) => handleViewDocument(e, g.documentUrl)}
+                                        className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium flex items-center gap-1"
+                                      >
+                                        <FileText className="w-3 h-3" /> View ID Document
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }) : (
+                    <div className="bg-white p-10 text-center text-gray-500 rounded-xl border border-gray-200 shadow-sm">
+                      {records.length === 0 ? 'No departed stays on record yet.' : 'No records found matching your search.'}
                     </div>
                   )}
                 </div>
@@ -726,8 +926,8 @@ const StaffDashboard = () => {
                             
                             {guest.verificationDetails && (
                               <div className="mt-3 bg-white/50 p-3 rounded text-xs text-gray-600 space-y-1 border border-white/40">
-                                <p><strong>OCR Match:</strong> {guest.verificationDetails.extractedName || 'N/A'}</p>
-                                <p><strong>Confidence:</strong> {Math.round((guest.verificationDetails.confidenceScore || 0) * 100)}%</p>
+                                <p><strong>Name on ID:</strong> {guest.verificationDetails.extractedName || 'N/A'}</p>
+                                <p><strong>Verification:</strong> {guest.verificationDetails.governmentVerified ? 'Confirmed against government record' : 'Read from document only'}</p>
                                 <p><strong>System Note:</strong> {guest.verificationDetails.remarks}</p>
                               </div>
                             )}

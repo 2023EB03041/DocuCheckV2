@@ -12,8 +12,17 @@ class ReservationController {
 
   async getReservations(req, res) {
     try {
-      const reservations = await reservationService.getAllReservations();
+      const reservations = await reservationService.getActiveReservations();
       res.json(reservations);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  async getReservationRecords(req, res) {
+    try {
+      const records = await reservationService.getPastReservations();
+      res.json(records);
     } catch (error) {
       res.status(500).json({ message: error.message });
     }

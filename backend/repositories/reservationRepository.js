@@ -1,8 +1,14 @@
 import Reservation from '../models/Reservation.js';
 
 class ReservationRepository {
-  async getAllReservations() {
-    return await Reservation.find().sort({ checkInDate: 1 });
+  // Stays that have not been checked out of yet: current and upcoming.
+  async getActiveReservations(cutoff) {
+    return await Reservation.find({ checkOutDate: { $gte: cutoff } }).sort({ checkInDate: 1 });
+  }
+
+  // Completed stays, most recently departed first.
+  async getPastReservations(cutoff) {
+    return await Reservation.find({ checkOutDate: { $lt: cutoff } }).sort({ checkOutDate: -1 });
   }
 
   async findById(reservationId) {
