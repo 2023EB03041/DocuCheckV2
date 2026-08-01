@@ -34,3 +34,7 @@ services:
         value: "121212"
       - key: REQUIRE_GOVERNMENT_VERIFICATION
         value: "true"
+      # Sites a browser may call this API from. Comma separated; add preview
+      # deployment URLs here if they need to reach the API.
+      - key: CORS_ORIGINS
+        value: https://docucheckv2.pages.dev
