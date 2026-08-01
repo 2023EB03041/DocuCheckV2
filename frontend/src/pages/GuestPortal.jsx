@@ -12,6 +12,24 @@ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); retur
 // Parse a 'YYYY-MM-DD' string into a local Date.
 const ymdToDate = (s) => { if (!s) return undefined; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 
+// One line of the upload progress. 'pending' is a step not started, 'active' is
+// the one under way, 'done' passed, and 'warn' finished without confirmation.
+const StepIcon = ({ state }) => {
+  if (state === 'active') return <Loader2 className="w-4 h-4 text-[#d4af37] animate-spin shrink-0" />;
+  if (state === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />;
+  if (state === 'warn') return <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />;
+  return <span className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />;
+};
+
+const VerifyStep = ({ state, children }) => (
+  <div className="flex items-center gap-2 text-left">
+    <StepIcon state={state} />
+    <span className={`text-xs ${
+      state === 'pending' ? 'text-gray-400' : state === 'warn' ? 'text-amber-700' : 'text-gray-700'
+    }`}>{children}</span>
+  </div>
+);
+
 const GuestPortal = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -37,6 +55,10 @@ const GuestPortal = () => {
   // Verification State (Files array matching guest indices)
   const [files, setFiles] = useState([null, null]);
   const [extracting, setExtracting] = useState({});
+  // Per guest view of how far their upload has got: 'reading' while the details
+  // are being taken off the card, 'checking' while those details are put to the
+  // issuing authority, then the outcome of each once the answer is back.
+  const [uploadStage, setUploadStage] = useState({});
   
   // Payment State
   const [payment, setPayment] = useState({
@@ -99,6 +121,18 @@ const GuestPortal = () => {
     if (!file) return;
 
     setExtracting(prev => ({ ...prev, [index]: true }));
+    setUploadStage(prev => ({ ...prev, [index]: { phase: 'reading' } }));
+
+    // The server reads the card and then puts it to the issuing authority in one
+    // call, so the point it moves between the two is not visible from here. The
+    // second step is shown as started once reading has typically finished; the
+    // ticks below only ever come from what the server actually reported.
+    const toChecking = setTimeout(() => {
+      setUploadStage(prev => (
+        prev[index]?.phase === 'reading' ? { ...prev, [index]: { phase: 'checking' } } : prev
+      ));
+    }, 2200);
+
     const formData = new FormData();
     formData.append('idDocument', file);
     if (booking.checkInDate) formData.append('checkInDate', booking.checkInDate);
@@ -110,7 +144,15 @@ const GuestPortal = () => {
         timeout: 120000 // reading the document and checking it can be slow on a cold start
       });
 
-      const { success, extractedName, extractedAge, extractedSex, error } = res.data;
+      const { success, extractedName, extractedAge, extractedSex, error, governmentVerified } = res.data;
+      setUploadStage(prev => ({
+        ...prev,
+        [index]: {
+          phase: 'done',
+          read: !!(success && extractedName),
+          verified: governmentVerified === true
+        }
+      }));
       if (success && extractedName) {
         setBooking(prev => {
           const g = [...prev.guests];
@@ -125,6 +167,7 @@ const GuestPortal = () => {
       } else {
         alert(error || "This document does not appear to be a valid ID, or it is too blurry to read. Please upload a clear photo of a valid Govt ID.");
         clearFile();
+        setUploadStage(prev => { const c = { ...prev }; delete c[index]; return c; });
       }
     } catch (err) {
       // Any failure (timeout, server busy, duplicate, network) must reject the file,
@@ -139,7 +182,9 @@ const GuestPortal = () => {
       }
       alert(msg);
       clearFile();
+      setUploadStage(prev => { const c = { ...prev }; delete c[index]; return c; });
     } finally {
+      clearTimeout(toChecking);
       setExtracting(prev => ({ ...prev, [index]: false }));
     }
   };
@@ -574,7 +619,7 @@ const GuestPortal = () => {
               <h3 className="text-2xl font-bold text-[#1a365d]">Pre-Arrival Verification</h3>
             </div>
             <p className="text-gray-600 mb-8 text-sm">
-              Uploading government-issued IDs for all guests is mandatory. We use secure Setu Document Extraction to verify identities and auto-fill your details.
+              Uploading government-issued IDs for all guests is mandatory. The details on each ID are read and confirmed against government records to fill in your booking.
             </p>
 
             <div className="space-y-12">
@@ -648,14 +693,32 @@ const GuestPortal = () => {
                     }`}>
                       {extracting[index] ? (
                         <div className="flex flex-col items-center">
-                          <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin mb-2" />
-                          <p className="text-sm font-medium text-gray-700">Extracting details from ID...</p>
+                          <p className="text-sm font-medium text-gray-700 mb-3">Verifying this ID...</p>
+                          <div className="w-full max-w-[17rem] space-y-2">
+                            <VerifyStep state={uploadStage[index]?.phase === 'reading' ? 'active' : 'done'}>
+                              Reading the details on the card
+                            </VerifyStep>
+                            <VerifyStep state={uploadStage[index]?.phase === 'checking' ? 'active' : 'pending'}>
+                              Confirming against government records
+                            </VerifyStep>
+                          </div>
+                          <div className="w-full max-w-[17rem] h-1 bg-gray-200 rounded-full mt-3 overflow-hidden">
+                            <div className={`h-full bg-[#d4af37] rounded-full transition-all duration-1000 ease-out ${
+                              uploadStage[index]?.phase === 'reading' ? 'w-1/2' : 'w-[90%]'
+                            }`} />
+                          </div>
                         </div>
                       ) : files[index] ? (
                         <div className="flex flex-col items-center">
-                          <CheckCircle2 className="w-8 h-8 text-green-500 mb-2" />
-                          <p className="font-medium text-gray-900 text-sm">{files[index].name}</p>
-                          <p className="text-xs text-green-600 mt-1">Details auto-filled above.</p>
+                          <p className="font-medium text-gray-900 text-sm mb-3">{files[index].name}</p>
+                          <div className="w-full max-w-[17rem] space-y-2">
+                            <VerifyStep state="done">Details read and filled in above</VerifyStep>
+                            <VerifyStep state={uploadStage[index]?.verified ? 'done' : 'warn'}>
+                              {uploadStage[index]?.verified
+                                ? 'Confirmed against government records'
+                                : 'Read from the document only'}
+                            </VerifyStep>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
