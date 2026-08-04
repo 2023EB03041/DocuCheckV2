@@ -1,5 +1,6 @@
 import reservationRepository from '../repositories/reservationRepository.js';
 import roomRepository from '../repositories/roomRepository.js';
+import { normalizeEmail } from './emailOtpService.js';
 
 // A stay counts as finished once its check-out date is behind us; the guest is
 // still in-house on the check-out date itself, so the boundary is midnight today.
@@ -47,9 +48,16 @@ class ReservationService {
     return reservation;
   }
 
-  async createBooking(bookingData) {
+  // verifiedEmail is the address the guest confirmed with a one-time code. The
+  // booking is written against that address rather than whatever the form sent,
+  // so a confirmed code cannot be reused to book under a different email.
+  async createBooking(bookingData, verifiedEmail) {
     const { guests, email, phone, roomType, totalPrice, checkInDate, checkOutDate } = bookingData;
-    
+
+    if (!verifiedEmail || normalizeEmail(email) !== verifiedEmail) {
+      throw new Error('This booking must use the email address that was verified.');
+    }
+
     const requiredRoomsCount = Math.ceil((guests?.length || 1) / 2);
 
     // Reclaim departed guests' rooms first so they can be resold immediately.
@@ -66,7 +74,9 @@ class ReservationService {
     const savedReservation = await reservationRepository.createReservation({
       reservationId,
       guests,
-      email,
+      email: verifiedEmail,
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
       phone,
       roomType,
       roomNumbers: availableRooms.map(r => r.roomNumber),

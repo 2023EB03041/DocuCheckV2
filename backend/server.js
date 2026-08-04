@@ -6,6 +6,7 @@ import reservationRoutes from './routes/reservationRoutes.js';
 import verifyRoutes from './routes/verifyRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
+import emailOtpRoutes from './routes/emailOtpRoutes.js';
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/verify', verifyRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/email-verification', emailOtpRoutes);
 
 import Room from './models/Room.js';
 import User from './models/User.js';

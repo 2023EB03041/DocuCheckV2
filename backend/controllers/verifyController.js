@@ -32,12 +32,14 @@ class VerifyController {
         return res.status(400).json({ message: 'No document uploaded' });
       }
 
-      const result = await verifyService.verifyGuestDocument(reservationId, guestIndex, req.file);
+      const result = await verifyService.verifyGuestDocument(reservationId, guestIndex, req.file, req.verifiedEmail);
       res.json(result);
     } catch (error) {
       console.error('Verification Error:', error);
       if (error.message === 'Reservation not found') {
         res.status(404).json({ message: error.message });
+      } else if (error.message === 'This booking belongs to a different email address') {
+        res.status(403).json({ message: error.message });
       } else if (error.message === 'Invalid guest index') {
         res.status(400).json({ message: error.message });
       } else {
