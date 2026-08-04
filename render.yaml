@@ -34,20 +34,12 @@ services:
         value: "121212"
       - key: REQUIRE_GOVERNMENT_VERIFICATION
         value: "true"
-      # Mail delivery for the guest's email verification code. Any SMTP
-      # provider works; credentials are set in the dashboard, never in the repo.
-      - key: SMTP_HOST
+      # Supabase Auth, which emails and checks the guest's verification code.
+      # Set both in the dashboard, never in the repo.
+      - key: SUPABASE_URL
         sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
+      - key: SUPABASE_ANON_KEY
         sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: MAIL_FROM
-        sync: false
-      - key: MAIL_FROM_NAME
-        value: Lumina Resort & Spa
       # Sites a browser may call this API from. Comma separated; add preview
       # deployment URLs here if they need to reach the API.
       - key: CORS_ORIGINS
