@@ -1,23 +1,28 @@
 import jwt from 'jsonwebtoken';
 
-// The one-time code is generated, emailed and checked by Supabase Auth, so no
-// code is ever created or stored here and nothing is sent from this server.
-// The message reaches the guest from Supabase's own address and infrastructure,
-// which is what lets this work without a sending domain of our own.
+// The one-time code is generated, emailed and checked by Stytch, so no code is
+// ever created or stored here and nothing is sent from this server. The message
+// reaches the guest from Stytch's own address, which is what lets this work
+// without a sending domain of our own.
 //
-// This server keeps only the last step: once Supabase confirms an address, it
+// This server keeps only the last step: once Stytch confirms an address, it
 // issues short-lived proof that travels with the ID uploads and the booking.
+
+// Test replies from Stytch's sandbox project; live is the real one. Both send
+// from Stytch's address, so the choice only affects quotas.
+const BASE_URLS = {
+  test: 'https://test.stytch.com',
+  live: 'https://api.stytch.com'
+};
 
 // An upstream call that stops responding must not hold the guest's request open.
 const REQUEST_TIMEOUT_MS = 15000;
 
-// Supabase refuses a second code for the same address inside its own cooldown.
-// Used to tell the page how long to wait when it answers with one.
-const RESEND_COOLDOWN_SECONDS = 60;
+// How long Stytch should keep the emailed code usable.
+const CODE_TTL_MINUTES = 10;
 
-// Supabase's default lifetime for an emailed code. Reported to the caller for
-// completeness; the authority on expiry is Supabase, not this constant.
-const CODE_TTL_SECONDS = 3600;
+// How long the page waits before offering to send another code.
+const RESEND_COOLDOWN_SECONDS = 60;
 
 // Proof of a verified address. Long enough to finish a booking, short enough
 // that it is not worth keeping.
@@ -40,21 +45,20 @@ const assertUsableEmail = (email) => {
   }
 };
 
-const isConfigured = () => Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
+const isConfigured = () => Boolean(process.env.STYTCH_PROJECT_ID && process.env.STYTCH_SECRET);
 
-/**
- * Calls a Supabase Auth endpoint. The key sent here is the publishable one,
- * which is meant to be seen by clients and carries no privileges of its own.
- */
-const postToSupabase = async (path, body) => {
-  const baseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const key = process.env.SUPABASE_ANON_KEY;
+const getBaseUrl = () =>
+  BASE_URLS[(process.env.STYTCH_ENV || 'test').toLowerCase()] || BASE_URLS.test;
 
-  const response = await fetch(`${baseUrl}${path}`, {
+const postToStytch = async (path, body) => {
+  const credentials = Buffer
+    .from(`${process.env.STYTCH_PROJECT_ID}:${process.env.STYTCH_SECRET}`)
+    .toString('base64');
+
+  const response = await fetch(`${getBaseUrl()}${path}`, {
     method: 'POST',
     headers: {
-      'apikey': key,
-      'Authorization': `Bearer ${key}`,
+      'Authorization': `Basic ${credentials}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body),
@@ -64,15 +68,11 @@ const postToSupabase = async (path, body) => {
   return { ok: response.ok, status: response.status, payload: await response.json().catch(() => ({})) };
 };
 
-// Supabase has reported errors under several field names across versions, so
-// each is read in turn rather than trusting any single one.
-const upstreamMessage = (payload) =>
-  payload?.msg || payload?.error_description || payload?.message || payload?.error || '';
-
 class EmailOtpService {
   /**
-   * Asks Supabase to email a code to the address. Nothing is written here —
-   * Supabase holds the code and decides when it expires.
+   * Asks Stytch to email a code to the address. Nothing is written here —
+   * Stytch holds the code and decides when it expires. The returned id names
+   * the message the code belongs to and has to come back with the code.
    */
   async requestCode(rawEmail) {
     const email = normalizeEmail(rawEmail);
@@ -84,7 +84,10 @@ class EmailOtpService {
 
     let result;
     try {
-      result = await postToSupabase('/auth/v1/otp', { email, create_user: true });
+      result = await postToStytch('/v1/otps/email/login_or_create', {
+        email,
+        expiration_minutes: CODE_TTL_MINUTES
+      });
     } catch (error) {
       console.error('Email verification send error:', error.message);
       throw fail(502, 'We could not send the verification code right now. Please try again in a moment.');
@@ -96,25 +99,31 @@ class EmailOtpService {
       throw error;
     }
 
-    if (!result.ok) {
-      console.error(`Email verification send failed (HTTP ${result.status}): ${upstreamMessage(result.payload)}`);
+    if (!result.ok || !result.payload?.email_id) {
+      console.error(
+        `Email verification send failed (HTTP ${result.status}): ${result.payload?.error_message || result.payload?.error_type || 'no detail'}`
+      );
       throw fail(502, 'We could not send the verification code to that address. Please check it and try again.');
     }
 
     return {
       email,
-      expiresInSeconds: CODE_TTL_SECONDS,
+      methodId: result.payload.email_id,
+      expiresInSeconds: CODE_TTL_MINUTES * 60,
       resendInSeconds: RESEND_COOLDOWN_SECONDS
     };
   }
 
   /**
-   * Puts the code the guest typed to Supabase. Only when Supabase accepts it is
-   * proof issued, so a confirmed address is never taken on the client's word.
+   * Puts the code the guest typed to Stytch. The address proof is issued for is
+   * read back out of Stytch's answer rather than taken from the request, so a
+   * code confirmed for one address cannot be turned into proof for another.
    */
-  async confirmCode(rawEmail, rawCode) {
-    const email = normalizeEmail(rawEmail);
-    assertUsableEmail(email);
+  async confirmCode(rawMethodId, rawCode) {
+    const methodId = (rawMethodId || '').trim();
+    if (!methodId) {
+      throw fail(400, 'Request a verification code first.');
+    }
 
     const code = (rawCode || '').trim();
     if (!/^\d{6}$/.test(code)) {
@@ -127,7 +136,7 @@ class EmailOtpService {
 
     let result;
     try {
-      result = await postToSupabase('/auth/v1/verify', { type: 'email', email, token: code });
+      result = await postToStytch('/v1/otps/authenticate', { method_id: methodId, code });
     } catch (error) {
       console.error('Email verification confirm error:', error.message);
       throw fail(502, 'We could not check that code right now. Please try again in a moment.');
@@ -142,6 +151,17 @@ class EmailOtpService {
       // way, so the guest is given the one instruction that covers all three.
       throw fail(400, 'That code is not correct or has expired. Please check it, or request a new one.');
     }
+
+    const addresses = result.payload?.user?.emails || [];
+    const confirmed = addresses.find(entry => entry.email_id === methodId) ||
+      (addresses.length === 1 ? addresses[0] : null);
+
+    if (!confirmed?.email) {
+      console.error('Email verification confirm: no address on the authenticated response.');
+      throw fail(502, 'We could not confirm that address. Please request a new code.');
+    }
+
+    const email = normalizeEmail(confirmed.email);
 
     return {
       email,

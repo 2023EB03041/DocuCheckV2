@@ -46,6 +46,7 @@ const GuestPortal = () => {
     busy: '',            // 'send' while a code is going out, 'confirm' while one is checked
     verifiedEmail: '',
     token: '',
+    methodId: '',        // names the message the code was sent in; goes back with the code
     code: '',
     notice: '',
     error: '',
@@ -146,6 +147,7 @@ const GuestPortal = () => {
         ...prev,
         codeSent: true,
         busy: '',
+        methodId: res.data.methodId || '',
         code: '',
         notice: res.data.message || '',
         error: '',
@@ -172,7 +174,7 @@ const GuestPortal = () => {
 
     try {
       const res = await axios.post(`${API_URL}/email-verification/confirm`, {
-        email: booking.email.trim(),
+        methodId: emailVerification.methodId,
         code: emailVerification.code
       });
       setEmailVerification({

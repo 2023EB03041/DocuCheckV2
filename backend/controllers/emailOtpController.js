@@ -6,6 +6,9 @@ class EmailOtpController {
       const result = await emailOtpService.requestCode(req.body?.email);
       res.json({
         message: `A verification code has been sent to ${result.email}. It can take a moment to arrive — check your spam folder if it does not.`,
+        // Names the message the code belongs to; the page sends it back with
+        // the code so the two can be matched without any state held here.
+        methodId: result.methodId,
         expiresInSeconds: result.expiresInSeconds,
         resendInSeconds: result.resendInSeconds
       });
@@ -25,7 +28,7 @@ class EmailOtpController {
 
   async confirmCode(req, res) {
     try {
-      const result = await emailOtpService.confirmCode(req.body?.email, req.body?.code);
+      const result = await emailOtpService.confirmCode(req.body?.methodId, req.body?.code);
       res.json({
         message: 'Email address verified.',
         email: result.email,
