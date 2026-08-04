@@ -5,10 +5,7 @@ class EmailOtpController {
     try {
       const result = await emailOtpService.requestCode(req.body?.email);
       res.json({
-        message: result.delivery === 'email'
-          ? `A verification code has been sent to ${result.email}.`
-          : 'Mail delivery is not configured — the verification code was written to the server log.',
-        delivery: result.delivery,
+        message: `A verification code has been sent to ${result.email}. It can take a moment to arrive — check your spam folder if it does not.`,
         expiresInSeconds: result.expiresInSeconds,
         resendInSeconds: result.resendInSeconds
       });
