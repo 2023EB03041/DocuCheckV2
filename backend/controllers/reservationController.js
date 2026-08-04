@@ -43,7 +43,7 @@ class ReservationController {
 
   async createReservation(req, res) {
     try {
-      const saved = await reservationService.createBooking(req.body);
+      const saved = await reservationService.createBooking(req.body, req.verifiedEmail);
       res.status(201).json(saved);
     } catch (error) {
       res.status(400).json({ message: error.message });

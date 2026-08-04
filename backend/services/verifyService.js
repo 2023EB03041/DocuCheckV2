@@ -3,6 +3,7 @@ import reservationRepository from '../repositories/reservationRepository.js';
 import IdDocument from '../models/IdDocument.js';
 import { verifyDocument, extractDocumentDetails } from './documentReaderService.js';
 import { verifyAgainstGovernmentRecord, VERIFICATION_LEVEL } from './govVerificationService.js';
+import { normalizeEmail } from './emailOtpService.js';
 
 // A document that no government record confirms is rejected outright. Set
 // REQUIRE_GOVERNMENT_VERIFICATION=false to accept a reading on its own, which
@@ -100,10 +101,17 @@ class VerifyService {
     return extractionResult;
   }
 
-  async verifyGuestDocument(reservationId, guestIndex, file) {
+  // verifiedEmail is the address confirmed by one-time code on this request.
+  // Documents may only be attached to a booking made under that same address,
+  // so one guest's verification cannot be used to load IDs onto another's stay.
+  async verifyGuestDocument(reservationId, guestIndex, file, verifiedEmail) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
       throw new Error('Reservation not found');
+    }
+
+    if (!verifiedEmail || normalizeEmail(reservation.email) !== verifiedEmail) {
+      throw new Error('This booking belongs to a different email address');
     }
 
     const index = parseInt(guestIndex, 10);

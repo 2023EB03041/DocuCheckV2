@@ -34,6 +34,20 @@ services:
         value: "121212"
       - key: REQUIRE_GOVERNMENT_VERIFICATION
         value: "true"
+      # Mail delivery for the guest's email verification code. Any SMTP
+      # provider works; credentials are set in the dashboard, never in the repo.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: Lumina Resort & Spa
       # Sites a browser may call this API from. Comma separated; add preview
       # deployment URLs here if they need to reach the API.
       - key: CORS_ORIGINS

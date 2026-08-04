@@ -26,6 +26,10 @@ const reservationSchema = new mongoose.Schema({
     }
   }],
   email: String,
+  // Set once the address has answered a one-time code, which is required
+  // before any ID document is uploaded against the booking.
+  emailVerified: { type: Boolean, default: false },
+  emailVerifiedAt: Date,
   phone: String,
   roomType: String,
   roomNumbers: [String],
