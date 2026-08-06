@@ -1,6 +1,7 @@
 import reservationRepository from '../repositories/reservationRepository.js';
 import roomRepository from '../repositories/roomRepository.js';
 import { normalizeEmail } from './emailOtpService.js';
+import { quoteStay } from '../config/roomPricing.js';
 
 // A stay counts as finished once its check-out date is behind us; the guest is
 // still in-house on the check-out date itself, so the boundary is midnight today.
@@ -52,13 +53,23 @@ class ReservationService {
   // booking is written against that address rather than whatever the form sent,
   // so a confirmed code cannot be reused to book under a different email.
   async createBooking(bookingData, verifiedEmail) {
-    const { guests, email, phone, roomType, totalPrice, checkInDate, checkOutDate } = bookingData;
+    const { guests, email, phone, roomType, checkInDate, checkOutDate } = bookingData;
 
     if (!verifiedEmail || normalizeEmail(email) !== verifiedEmail) {
       throw new Error('This booking must use the email address that was verified.');
     }
 
-    const requiredRoomsCount = Math.ceil((guests?.length || 1) / 2);
+    // The price is worked out here from the rate card rather than taken from the
+    // request, so what is stored always matches the published rate for the tier,
+    // the number of rooms and the length of the stay.
+    const quote = quoteStay({
+      roomType,
+      guestCount: guests?.length || 1,
+      checkInDate,
+      checkOutDate
+    });
+
+    const requiredRoomsCount = quote.rooms;
 
     // Reclaim departed guests' rooms first so they can be resold immediately.
     await this.releaseExpiredRooms();
@@ -80,7 +91,9 @@ class ReservationService {
       phone,
       roomType,
       roomNumbers: availableRooms.map(r => r.roomNumber),
-      totalPrice,
+      totalPrice: quote.total,
+      pricePerNight: quote.pricePerNight,
+      nights: quote.nights,
       checkInDate: new Date(checkInDate),
       checkOutDate: new Date(checkOutDate)
     });
