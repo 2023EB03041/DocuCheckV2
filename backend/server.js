@@ -57,6 +57,7 @@ app.use('/api/email-verification', emailOtpRoutes);
 import Room from './models/Room.js';
 import User from './models/User.js';
 import bcrypt from 'bcryptjs';
+import { buildRoomInventory } from './config/roomPricing.js';
 
 // Database Connection
 const PORT = process.env.PORT || 5000;
@@ -74,18 +75,19 @@ const connectDB = async () => {
     console.log('Connected to MongoDB Atlas');
     
     // Seed / top-up room inventory (idempotent: adds only missing rooms, so it
-    // grows an already-seeded DB without touching existing rooms/bookings).
-    const pad = (n) => String(n).padStart(2, '0');
-    const desiredRooms = [];
-    for (let i = 1; i <= 12; i++) desiredRooms.push({ roomNumber: `1${pad(i)}`, type: 'Standard', pricePerNight: 12000 });
-    for (let i = 1; i <= 10; i++) desiredRooms.push({ roomNumber: `2${pad(i)}`, type: 'Deluxe', pricePerNight: 18000 });
-    for (let i = 1; i <= 8; i++)  desiredRooms.push({ roomNumber: `3${pad(i)}`, type: 'Ocean View', pricePerNight: 28000 });
-    for (let i = 1; i <= 6; i++)  desiredRooms.push({ roomNumber: `4${pad(i)}`, type: 'Presidential Suite', pricePerNight: 75000 });
+    // grows an already-seeded DB without touching existing bookings).
+    // The tier and its rate are set on every run, not only on insert, so rooms
+    // seeded against an older rate card are brought back in line and every room
+    // of a tier is priced the same.
+    const desiredRooms = buildRoomInventory();
 
     await Room.bulkWrite(desiredRooms.map((r) => ({
       updateOne: {
         filter: { roomNumber: r.roomNumber },
-        update: { $setOnInsert: { ...r, status: 'Available' } },
+        update: {
+          $set: { type: r.type, pricePerNight: r.pricePerNight },
+          $setOnInsert: { status: 'Available' }
+        },
         upsert: true,
       },
     })));

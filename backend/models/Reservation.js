@@ -33,6 +33,10 @@ const reservationSchema = new mongoose.Schema({
   phone: String,
   roomType: String,
   roomNumbers: [String],
+  // The rate the stay was sold at and how many nights it covers, kept alongside
+  // the total so a confirmation can be reproduced exactly as it was priced.
+  pricePerNight: Number,
+  nights: Number,
   totalPrice: Number,
   checkInDate: {
     type: Date,

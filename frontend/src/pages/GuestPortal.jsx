@@ -4,6 +4,7 @@ import { Calendar, Users, ChevronRight, CheckCircle2, ShieldCheck, UploadCloud, 
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import DateField from '../components/DateField';
+import { quoteStay, formatINR } from '../utils/pricing';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
@@ -73,7 +74,7 @@ const GuestPortal = () => {
       { name: '', age: '', sex: 'Male', idType: 'Aadhaar Card' }
     ],
     roomType: '',
-    totalPrice: 0,
+    pricePerNight: 0,
     email: '',
     phone: ''
   });
@@ -330,6 +331,21 @@ const GuestPortal = () => {
     }
   }, [step]);
 
+  // Both dates are needed before rooms are shown: the length of the stay is
+  // what the nightly rate is multiplied by, so a quote cannot be made without it.
+  const handleSearchAvailability = () => {
+    const newErrors = {};
+    if (!booking.checkInDate) newErrors.checkInDate = 'Please choose a check-in date';
+    if (!booking.checkOutDate) {
+      newErrors.checkOutDate = 'Please choose a check-out date';
+    } else if (booking.checkOutDate <= booking.checkInDate) {
+      newErrors.checkOutDate = 'Check-out must be after check-in';
+    }
+
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length === 0) setStep(2);
+  };
+
   const validateStep3 = () => {
     const newErrors = {};
     if (!booking.email || !/^\S+@\S+\.\S+$/.test(booking.email)) {
@@ -367,8 +383,9 @@ const GuestPortal = () => {
   };
 
   const handleRoomSelect = (room) => {
-    const requiredRooms = Math.ceil(booking.guestCount / 2);
-    setBooking(prev => ({ ...prev, roomType: room.type, totalPrice: room.pricePerNight * requiredRooms }));
+    // Only the tier and its rate are carried forward; the total is worked out
+    // from the shared quote so it stays in step with the rooms and the nights.
+    setBooking(prev => ({ ...prev, roomType: room.type, pricePerNight: room.pricePerNight }));
     setStep(3);
   };
 
@@ -418,9 +435,13 @@ const GuestPortal = () => {
     setPayment({...payment, cvc: val});
   };
 
-  const subtotal = booking.totalPrice;
-  const gst = subtotal * 0.18;
-  const finalTotal = subtotal + gst;
+  const quote = quoteStay({
+    pricePerNight: booking.pricePerNight,
+    guestCount: booking.guestCount,
+    checkInDate: booking.checkInDate,
+    checkOutDate: booking.checkOutDate
+  });
+  const { subtotal, gst, rooms: requiredRooms, nights, total: finalTotal } = quote;
 
   const handleBook = () => {
     if (!validatePayment()) return;
@@ -443,14 +464,9 @@ const GuestPortal = () => {
 
     setPaymentStatus('processing');
     try {
-      // 1. Create Reservation
-      const resData = { 
-        ...booking,
-        totalPrice: finalTotal,
-        checkInDate: booking.checkInDate || new Date(), 
-        checkOutDate: booking.checkOutDate || new Date(Date.now() + 86400000) 
-      };
-      const res = await axios.post(`${API_URL}/reservations`, resData, { headers: verificationHeaders() });
+      // 1. Create Reservation. The total is not sent — the server prices the
+      // stay from the same rate card the quote above was built from.
+      const res = await axios.post(`${API_URL}/reservations`, booking, { headers: verificationHeaders() });
       const newReservation = res.data;
       
       // 2. Upload Documents for each guest
@@ -547,18 +563,37 @@ const GuestPortal = () => {
     doc.text(new Date(reservation.checkOutDate).toLocaleDateString(), 145, 80);
     
     doc.setFont(undefined, 'bold');
-    doc.text('Total Price:', 115, 90);
+    doc.text('Nights:', 115, 90);
     doc.setFont(undefined, 'normal');
-    doc.text(`INR ${reservation.totalPrice.toLocaleString('en-IN')}`, 145, 90);
+    doc.text(String(reservation.nights ?? nights), 145, 90);
+
+    // Charges, shown the same way they were quoted at checkout.
+    const pdfRooms = (reservation.roomNumbers || []).length || requiredRooms;
+    const pdfNights = reservation.nights ?? nights;
+    const pdfRate = reservation.pricePerNight ?? booking.pricePerNight;
+    const pdfSubtotal = pdfRate * pdfRooms * pdfNights;
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Charges:', 20, 100);
+    doc.setFont(undefined, 'normal');
+    doc.text(`INR ${pdfRate.toLocaleString('en-IN')} x ${pdfRooms} room(s) x ${pdfNights} night(s)`, 55, 100);
+    doc.text(`INR ${pdfSubtotal.toLocaleString('en-IN')}`, 190, 100, null, null, 'right');
+
+    doc.text('GST (18%)', 55, 107);
+    doc.text(`INR ${(reservation.totalPrice - pdfSubtotal).toLocaleString('en-IN')}`, 190, 107, null, null, 'right');
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Total Paid', 55, 114);
+    doc.text(`INR ${reservation.totalPrice.toLocaleString('en-IN')}`, 190, 114, null, null, 'right');
 
     // Guest Info Section
     doc.setFontSize(14);
     doc.setTextColor(26, 54, 93);
     doc.setFont(undefined, 'normal');
-    doc.text('Guest Details & Verification', 20, 110);
-    doc.line(20, 113, 190, 113);
+    doc.text('Guest Details & Verification', 20, 130);
+    doc.line(20, 133, 190, 133);
 
-    let y = 125;
+    let y = 145;
     reservation.guests.forEach((guest, index) => {
       // Draw light box for each guest
       doc.setFillColor(249, 250, 251);
@@ -629,8 +664,9 @@ const GuestPortal = () => {
                 label="Check-in date"
                 value={booking.checkInDate}
                 minDate={startOfToday()}
-                onChange={(v) => setBooking({ ...booking, checkInDate: v, checkOutDate: booking.checkOutDate && booking.checkOutDate < v ? '' : booking.checkOutDate })}
+                onChange={(v) => setBooking({ ...booking, checkInDate: v, checkOutDate: booking.checkOutDate && booking.checkOutDate <= v ? '' : booking.checkOutDate })}
               />
+              {errors.checkInDate && <p className="text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.checkInDate}</p>}
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Check-out</label>
@@ -641,6 +677,7 @@ const GuestPortal = () => {
                 minDate={ymdToDate(booking.checkInDate) || startOfToday()}
                 onChange={(v) => setBooking({ ...booking, checkOutDate: v })}
               />
+              {errors.checkOutDate && <p className="text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.checkOutDate}</p>}
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Guests</label>
@@ -656,7 +693,7 @@ const GuestPortal = () => {
             </div>
           </div>
           
-          <button onClick={() => setStep(2)} className="w-full bg-[#1a365d] text-white py-4 rounded-sm font-bold tracking-widest uppercase hover:bg-[#2a4365] transition-colors flex items-center justify-center gap-2">
+          <button onClick={handleSearchAvailability} className="w-full bg-[#1a365d] text-white py-4 rounded-sm font-bold tracking-widest uppercase hover:bg-[#2a4365] transition-colors flex items-center justify-center gap-2">
             Check Availability <ChevronRight className="w-5 h-5" />
           </button>
         </div>
@@ -674,8 +711,13 @@ const GuestPortal = () => {
           ) : (
             <div className="space-y-6">
               {availableRooms.map(room => {
-                const requiredRooms = Math.ceil(booking.guestCount / 2);
-                const imgPath = room.type === 'Presidential Suite' ? '/room_presidential.jpg' : 
+                const roomQuote = quoteStay({
+                  pricePerNight: room.pricePerNight,
+                  guestCount: booking.guestCount,
+                  checkInDate: booking.checkInDate,
+                  checkOutDate: booking.checkOutDate
+                });
+                const imgPath = room.type === 'Presidential Suite' ? '/room_presidential.jpg' :
                                 room.type === 'Ocean View' ? '/room_ocean.jpg' : 
                                 room.type === 'Deluxe' ? '/room_deluxe.jpg' : '/room_standard.jpg';
                 return (
@@ -688,11 +730,15 @@ const GuestPortal = () => {
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <h3 className="text-2xl font-serif text-[#1a365d]">{room.type}</h3>
-                            {requiredRooms > 1 && <span className="inline-block bg-[#1a365d]/10 text-[#1a365d] text-[10px] font-bold px-2 py-0.5 uppercase rounded tracking-wide mt-1">{requiredRooms} Rooms Required for {booking.guestCount} Guests</span>}
+                            {roomQuote.rooms > 1 && <span className="inline-block bg-[#1a365d]/10 text-[#1a365d] text-[10px] font-bold px-2 py-0.5 uppercase rounded tracking-wide mt-1">{roomQuote.rooms} Rooms Required for {booking.guestCount} Guests</span>}
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold text-[#d4af37]">₹{(room.pricePerNight * requiredRooms).toLocaleString('en-IN')}</p>
-                            <p className="text-xs text-gray-400 uppercase tracking-wide">total per night</p>
+                            <p className="text-2xl font-bold text-[#d4af37]">{formatINR(roomQuote.pricePerNight)}</p>
+                            <p className="text-xs text-gray-400 uppercase tracking-wide">per room, per night</p>
+                            <p className="text-sm font-medium text-gray-700 mt-2">
+                              {formatINR(roomQuote.subtotal)} <span className="text-xs font-normal text-gray-500">for {roomQuote.nights} {roomQuote.nights === 1 ? 'night' : 'nights'}{roomQuote.rooms > 1 ? ` × ${roomQuote.rooms} rooms` : ''}</span>
+                            </p>
+                            <p className="text-[11px] text-gray-400">+ {formatINR(roomQuote.gst)} GST</p>
                           </div>
                         </div>
                         <p className="text-gray-600 mb-4 line-clamp-2">
@@ -1021,7 +1067,11 @@ const GuestPortal = () => {
               <div className="flex justify-between">
                 <div>
                   <p className="text-xs text-gray-500 uppercase">Rooms</p>
-                  <p className="font-medium text-gray-900">1</p>
+                  <p className="font-medium text-gray-900">{requiredRooms}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Nights</p>
+                  <p className="font-medium text-gray-900">{nights}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 uppercase">Guests</p>
@@ -1031,16 +1081,16 @@ const GuestPortal = () => {
             </div>
             <div className="border-t border-gray-200 pt-4 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">₹{subtotal.toLocaleString('en-IN')}</span>
+                <span className="text-gray-600">{formatINR(booking.pricePerNight)} × {requiredRooms} {requiredRooms === 1 ? 'room' : 'rooms'} × {nights} {nights === 1 ? 'night' : 'nights'}</span>
+                <span className="font-medium">{formatINR(subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">GST (18%)</span>
-                <span className="font-medium">₹{gst.toLocaleString('en-IN')}</span>
+                <span className="font-medium">{formatINR(gst)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold text-[#1a365d] pt-2 border-t border-gray-200 mt-2">
                 <span>Total</span>
-                <span>₹{finalTotal.toLocaleString('en-IN')}</span>
+                <span>{formatINR(finalTotal)}</span>
               </div>
             </div>
           </div>
