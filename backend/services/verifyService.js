@@ -101,16 +101,16 @@ class VerifyService {
     return extractionResult;
   }
 
-  // verifiedEmail is the address confirmed by one-time code on this request.
-  // Documents may only be attached to a booking made under that same address,
-  // so one guest's verification cannot be used to load IDs onto another's stay.
-  async verifyGuestDocument(reservationId, guestIndex, file, verifiedEmail) {
+  // guestEmail is the signed-in guest's address. Documents may only be attached
+  // to a booking made under that same address, so one guest's session cannot be
+  // used to load IDs onto another's stay.
+  async verifyGuestDocument(reservationId, guestIndex, file, guestEmail) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
       throw new Error('Reservation not found');
     }
 
-    if (!verifiedEmail || normalizeEmail(reservation.email) !== verifiedEmail) {
+    if (!guestEmail || normalizeEmail(reservation.email) !== guestEmail) {
       throw new Error('This booking belongs to a different email address');
     }
 

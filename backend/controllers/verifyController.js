@@ -32,7 +32,7 @@ class VerifyController {
         return res.status(400).json({ message: 'No document uploaded' });
       }
 
-      const result = await verifyService.verifyGuestDocument(reservationId, guestIndex, req.file, req.verifiedEmail);
+      const result = await verifyService.verifyGuestDocument(reservationId, guestIndex, req.file, req.guestEmail);
       res.json(result);
     } catch (error) {
       console.error('Verification Error:', error);

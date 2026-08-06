@@ -1,12 +1,10 @@
-import jwt from 'jsonwebtoken';
-
 // The one-time code is generated, emailed and checked by Stytch, so no code is
 // ever created or stored here and nothing is sent from this server. The message
 // reaches the guest from Stytch's own address, which is what lets this work
 // without a sending domain of our own.
 //
-// This server keeps only the last step: once Stytch confirms an address, it
-// issues short-lived proof that travels with the ID uploads and the booking.
+// Confirming a code is what signs a guest in; the session that follows is
+// issued by guestAuthService.
 
 // Test replies from Stytch's sandbox project; live is the real one. Both send
 // from Stytch's address, so the choice only affects quotas.
@@ -23,11 +21,6 @@ const CODE_TTL_MINUTES = 10;
 
 // How long the page waits before offering to send another code.
 const RESEND_COOLDOWN_SECONDS = 60;
-
-// Proof of a verified address. Long enough to finish a booking, short enough
-// that it is not worth keeping.
-const PROOF_TTL_SECONDS = 2 * 60 * 60;
-const PROOF_PURPOSE = 'email-verification';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -115,9 +108,9 @@ class EmailOtpService {
   }
 
   /**
-   * Puts the code the guest typed to Stytch. The address proof is issued for is
-   * read back out of Stytch's answer rather than taken from the request, so a
-   * code confirmed for one address cannot be turned into proof for another.
+   * Puts the code the guest typed to Stytch. The confirmed address is read back
+   * out of Stytch's answer rather than taken from the request, so a code
+   * confirmed for one address cannot sign anyone in as another.
    */
   async confirmCode(rawMethodId, rawCode) {
     const methodId = (rawMethodId || '').trim();
@@ -161,33 +154,7 @@ class EmailOtpService {
       throw fail(502, 'We could not confirm that address. Please request a new code.');
     }
 
-    const email = normalizeEmail(confirmed.email);
-
-    return {
-      email,
-      token: this.issueProof(email),
-      expiresInSeconds: PROOF_TTL_SECONDS
-    };
-  }
-
-  issueProof(email) {
-    return jwt.sign({ email, purpose: PROOF_PURPOSE }, process.env.JWT_SECRET, {
-      expiresIn: PROOF_TTL_SECONDS
-    });
-  }
-
-  /**
-   * Reads the address out of a proof, or null if it is missing, tampered with,
-   * expired, or was issued for anything other than email verification.
-   */
-  readProof(token) {
-    if (!token) return null;
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      return payload?.purpose === PROOF_PURPOSE ? normalizeEmail(payload.email) : null;
-    } catch {
-      return null;
-    }
+    return { email: normalizeEmail(confirmed.email) };
   }
 }
 

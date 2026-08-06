@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Users, ChevronRight, CheckCircle2, ShieldCheck, UploadCloud, Loader2, CreditCard, Lock, AlertCircle, Download, Mail } from 'lucide-react';
 import axios from 'axios';
-import { jsPDF } from 'jspdf';
 import DateField from '../components/DateField';
 import { quoteStay, formatINR } from '../utils/pricing';
+import { guestAuthHeader } from '../utils/guestSession';
+import { downloadReservationPdf } from '../utils/reservationPdf';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
@@ -31,38 +32,26 @@ const VerifyStep = ({ state, children }) => (
   </div>
 );
 
-const GuestPortal = () => {
+const GuestPortal = ({ session, onSessionExpired }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [availableRooms, setAvailableRooms] = useState([]);
   const [errors, setErrors] = useState({});
 
-  // Email verification. The address on the booking has to answer a code sent to
-  // it before any ID may be uploaded; the token returned on success is what the
-  // server accepts as proof, and it travels with every upload and the booking.
-  const emptyEmailVerification = {
-    codeSent: false,
-    verified: false,
-    busy: '',            // 'send' while a code is going out, 'confirm' while one is checked
-    verifiedEmail: '',
-    token: '',
-    methodId: '',        // names the message the code was sent in; goes back with the code
-    code: '',
-    notice: '',
-    error: '',
-    resendIn: 0
+  // The address on the booking is the one the guest signed in with, which was
+  // confirmed by a code sent to it at that point. Nothing here has to verify it
+  // again, and the guest cannot book under an address that is not theirs.
+  const guestEmail = session.email;
+
+  // A session can lapse while a booking is left open. When the server says so,
+  // the guest is signed out and sent back to sign in rather than losing the
+  // page to an error they cannot act on.
+  const handleExpiredSession = (message) => {
+    alert(message);
+    onSessionExpired();
+    navigate('/login', { state: { from: '/book' } });
   };
-  const [emailVerification, setEmailVerification] = useState(emptyEmailVerification);
-  const emailVerified = emailVerification.verified;
-  const resetEmailVerification = () => setEmailVerification(emptyEmailVerification);
-
-  // Proof of the verified address, sent with anything that carries an ID or
-  // creates the booking.
-  const verificationHeaders = () => (
-    emailVerification.token ? { 'x-email-verification': emailVerification.token } : {}
-  );
-
 
   // Booking State
   const [booking, setBooking] = useState({
@@ -75,7 +64,6 @@ const GuestPortal = () => {
     ],
     roomType: '',
     pricePerNight: 0,
-    email: '',
     phone: ''
   });
 
@@ -130,89 +118,7 @@ const GuestPortal = () => {
     setBooking({ ...booking, guests: updatedGuests });
   };
 
-  // Asks the server to email a code to the address in the form. Also used for
-  // "resend", which the server only allows once its cooldown has run out.
-  const requestEmailCode = async () => {
-    const email = booking.email.trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setErrors(prev => ({ ...prev, email: 'Valid email is required' }));
-      return;
-    }
-
-    setErrors(prev => { const c = { ...prev }; delete c.email; return c; });
-    setEmailVerification(prev => ({ ...prev, busy: 'send', error: '' }));
-
-    try {
-      const res = await axios.post(`${API_URL}/email-verification/send`, { email });
-      setEmailVerification(prev => ({
-        ...prev,
-        codeSent: true,
-        busy: '',
-        methodId: res.data.methodId || '',
-        code: '',
-        notice: res.data.message || '',
-        error: '',
-        resendIn: res.data.resendInSeconds || 60
-      }));
-    } catch (err) {
-      const status = err.response?.status;
-      setEmailVerification(prev => ({
-        ...prev,
-        busy: '',
-        // A cooldown means the earlier code is still live, so the entry box
-        // stays open rather than sending the guest back to the start.
-        codeSent: status === 429 ? true : prev.codeSent,
-        resendIn: err.response?.data?.resendInSeconds ?? prev.resendIn,
-        error: err.response?.data?.message || "We couldn't send the code. Please try again in a moment."
-      }));
-    }
-  };
-
-  const confirmEmailCode = async () => {
-    if (emailVerification.code.length !== 6 || emailVerification.busy) return;
-
-    setEmailVerification(prev => ({ ...prev, busy: 'confirm', error: '' }));
-
-    try {
-      const res = await axios.post(`${API_URL}/email-verification/confirm`, {
-        methodId: emailVerification.methodId,
-        code: emailVerification.code
-      });
-      setEmailVerification({
-        ...emptyEmailVerification,
-        verified: true,
-        codeSent: true,
-        verifiedEmail: res.data.email,
-        token: res.data.token
-      });
-      // Kept as the server recorded it, so the booking matches the proof.
-      setBooking(prev => ({ ...prev, email: res.data.email }));
-    } catch (err) {
-      setEmailVerification(prev => ({
-        ...prev,
-        busy: '',
-        error: err.response?.data?.message || "We couldn't confirm that code. Please try again."
-      }));
-    }
-  };
-
-  // Counts the resend cooldown down to zero.
-  useEffect(() => {
-    if (emailVerification.resendIn <= 0) return;
-    const timer = setTimeout(() => {
-      setEmailVerification(prev => ({ ...prev, resendIn: Math.max(0, prev.resendIn - 1) }));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [emailVerification.resendIn]);
-
   const handleFileChange = async (index, file) => {
-    // The upload area is closed until the email is verified; this is the guard
-    // behind it, since the server refuses an unverified upload either way.
-    if (file && !emailVerified) {
-      alert('Please verify your email address before uploading an ID document.');
-      return;
-    }
-
     if (file) {
       // Check if duplicate file in the current booking session
       const isDuplicate = files.some((f, i) => i !== index && f && f.name === file.name && f.size === file.size);
@@ -249,7 +155,7 @@ const GuestPortal = () => {
 
     try {
       const res = await axios.post(`${API_URL}/verify/extract`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data', ...verificationHeaders() },
+        headers: { 'Content-Type': 'multipart/form-data', ...guestAuthHeader() },
         timeout: 120000 // reading the document and checking it can be slow on a cold start
       });
 
@@ -284,19 +190,20 @@ const GuestPortal = () => {
       let msg;
       if (err.code === 'ECONNABORTED') {
         msg = "Verification timed out — the server may be waking up. Please try uploading again in a moment.";
-      } else if (err.response?.status === 401) {
-        // The proof of a verified email only lasts a couple of hours; a booking
-        // left open longer has to confirm the address again.
-        resetEmailVerification();
-        msg = "Your email verification has expired. Please verify your email address again.";
       } else if (err.response?.data?.message) {
         msg = err.response.data.message;
       } else {
         msg = "We couldn't verify this document (the server may be busy). Please try uploading it again.";
       }
-      alert(msg);
+
       clearFile();
       setUploadStage(prev => { const c = { ...prev }; delete c[index]; return c; });
+
+      if (err.response?.status === 401) {
+        handleExpiredSession('Your session has expired. Please sign in again to continue your booking.');
+      } else {
+        alert(msg);
+      }
     } finally {
       clearTimeout(toChecking);
       setExtracting(prev => ({ ...prev, [index]: false }));
@@ -348,11 +255,6 @@ const GuestPortal = () => {
 
   const validateStep3 = () => {
     const newErrors = {};
-    if (!booking.email || !/^\S+@\S+\.\S+$/.test(booking.email)) {
-      newErrors.email = "Valid email is required";
-    } else if (!emailVerified) {
-      newErrors.email = "Please verify this email address before continuing";
-    }
     if (!booking.phone || !/^[6-9]\d{9}$/.test(booking.phone)) {
       newErrors.phone = "Valid 10-digit Indian phone number required";
     }
@@ -466,7 +368,7 @@ const GuestPortal = () => {
     try {
       // 1. Create Reservation. The total is not sent — the server prices the
       // stay from the same rate card the quote above was built from.
-      const res = await axios.post(`${API_URL}/reservations`, booking, { headers: verificationHeaders() });
+      const res = await axios.post(`${API_URL}/reservations`, booking, { headers: guestAuthHeader() });
       const newReservation = res.data;
       
       // 2. Upload Documents for each guest
@@ -476,7 +378,7 @@ const GuestPortal = () => {
         const formData = new FormData();
         formData.append('idDocument', file);
         return axios.post(`${API_URL}/verify/${newReservation.reservationId}/${index}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data', ...verificationHeaders() }
+          headers: { 'Content-Type': 'multipart/form-data', ...guestAuthHeader() }
         }).catch(err => console.error(`Error uploading for guest ${index}:`, err));
       });
 
@@ -496,10 +398,7 @@ const GuestPortal = () => {
       console.error(error);
       setPaymentStatus('idle');
       if (error.response?.status === 401) {
-        // Proof of the verified address expired while the booking was open.
-        resetEmailVerification();
-        setStep(3);
-        alert('Your email verification has expired. Please verify your email address again to complete the booking.');
+        handleExpiredSession('Your session has expired. Please sign in again to complete the booking.');
         return;
       }
       alert(error.response?.data?.message || 'Payment processing failed. Please try again.');
@@ -507,122 +406,7 @@ const GuestPortal = () => {
   };
 
   const handleDownloadPDF = () => {
-    if (!reservation) return;
-    const doc = new jsPDF();
-    
-    // Header Background
-    doc.setFillColor(26, 54, 93);
-    doc.rect(0, 0, 210, 40, 'F');
-    
-    // Header Text
-    doc.setFontSize(24);
-    doc.setTextColor(255, 255, 255);
-    doc.text('LUMINA RESORT & SPA', 105, 20, null, null, 'center');
-    
-    doc.setFontSize(11);
-    doc.setTextColor(212, 175, 55); // Gold
-    doc.text('LUXURY LIVING AT ITS FINEST', 105, 30, null, null, 'center');
-    
-    // Title
-    doc.setFontSize(16);
-    doc.setTextColor(26, 54, 93);
-    doc.text('Booking Confirmation', 20, 55);
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(20, 58, 190, 58);
-    
-    // Details
-    doc.setFontSize(10);
-    doc.setTextColor(50, 50, 50);
-    
-    // Column 1
-    doc.setFont(undefined, 'bold');
-    doc.text('Confirmation ID:', 20, 70);
-    doc.setFont(undefined, 'normal');
-    doc.text(reservation.reservationId, 55, 70);
-
-    doc.setFont(undefined, 'bold');
-    doc.text('Room Type:', 20, 80);
-    doc.setFont(undefined, 'normal');
-    doc.text(reservation.roomType, 55, 80);
-    
-    doc.setFont(undefined, 'bold');
-    doc.text('Room Numbers:', 20, 90);
-    doc.setFont(undefined, 'normal');
-    doc.text((reservation.roomNumbers || []).join(', ') || 'Assigned at check-in', 55, 90);
-
-    // Column 2
-    doc.setFont(undefined, 'bold');
-    doc.text('Check-In:', 115, 70);
-    doc.setFont(undefined, 'normal');
-    doc.text(new Date(reservation.checkInDate).toLocaleDateString(), 145, 70);
-
-    doc.setFont(undefined, 'bold');
-    doc.text('Check-Out:', 115, 80);
-    doc.setFont(undefined, 'normal');
-    doc.text(new Date(reservation.checkOutDate).toLocaleDateString(), 145, 80);
-    
-    doc.setFont(undefined, 'bold');
-    doc.text('Nights:', 115, 90);
-    doc.setFont(undefined, 'normal');
-    doc.text(String(reservation.nights ?? nights), 145, 90);
-
-    // Charges, shown the same way they were quoted at checkout.
-    const pdfRooms = (reservation.roomNumbers || []).length || requiredRooms;
-    const pdfNights = reservation.nights ?? nights;
-    const pdfRate = reservation.pricePerNight ?? booking.pricePerNight;
-    const pdfSubtotal = pdfRate * pdfRooms * pdfNights;
-
-    doc.setFont(undefined, 'bold');
-    doc.text('Charges:', 20, 100);
-    doc.setFont(undefined, 'normal');
-    doc.text(`INR ${pdfRate.toLocaleString('en-IN')} x ${pdfRooms} room(s) x ${pdfNights} night(s)`, 55, 100);
-    doc.text(`INR ${pdfSubtotal.toLocaleString('en-IN')}`, 190, 100, null, null, 'right');
-
-    doc.text('GST (18%)', 55, 107);
-    doc.text(`INR ${(reservation.totalPrice - pdfSubtotal).toLocaleString('en-IN')}`, 190, 107, null, null, 'right');
-
-    doc.setFont(undefined, 'bold');
-    doc.text('Total Paid', 55, 114);
-    doc.text(`INR ${reservation.totalPrice.toLocaleString('en-IN')}`, 190, 114, null, null, 'right');
-
-    // Guest Info Section
-    doc.setFontSize(14);
-    doc.setTextColor(26, 54, 93);
-    doc.setFont(undefined, 'normal');
-    doc.text('Guest Details & Verification', 20, 130);
-    doc.line(20, 133, 190, 133);
-
-    let y = 145;
-    reservation.guests.forEach((guest, index) => {
-      // Draw light box for each guest
-      doc.setFillColor(249, 250, 251);
-      doc.rect(20, y - 5, 170, 16, 'F');
-      
-      doc.setFontSize(10);
-      doc.setTextColor(50, 50, 50);
-      doc.setFont(undefined, 'bold');
-      doc.text(`${index + 1}. ${guest.name}`, 25, y);
-      
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(100, 100, 100);
-      doc.text(`ID: ${guest.idType}`, 25, y + 6);
-      
-      const statusColor = guest.status === 'Verified' ? [34, 197, 94] : (guest.status === 'Failed' ? [239, 68, 68] : [234, 179, 8]);
-      doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
-      doc.setFont(undefined, 'bold');
-      doc.text(`Status: ${guest.status}`, 160, y + 3, null, null, 'right');
-      
-      y += 20;
-    });
-
-    // Footer
-    doc.setTextColor(150, 150, 150);
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.text('Please present this confirmation and your original ID documents upon check-in.', 105, 280, null, null, 'center');
-    
-    doc.save(`Lumina_Reservation_${reservation.reservationId}.pdf`);
+    if (reservation) downloadReservationPdf(reservation);
   };
 
   return (
@@ -767,40 +551,16 @@ const GuestPortal = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email (Primary Contact)</label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <input type="email" readOnly={emailVerification.codeSent}
-                        className={`w-full px-4 py-3 pr-10 border rounded-sm outline-none focus:border-[#d4af37] ${
-                          errors.email ? 'border-red-500' : emailVerified ? 'border-green-500' : 'border-gray-200'
-                        } ${emailVerification.codeSent ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'bg-gray-50'}`}
-                        placeholder="johndoe@example.com"
-                        value={booking.email}
-                        onChange={e => setBooking({ ...booking, email: e.target.value })} />
-                      {emailVerified && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />}
-                    </div>
-                    {emailVerification.codeSent ? (
-                      <button type="button" onClick={resetEmailVerification}
-                        className="px-4 py-3 border border-gray-300 text-gray-600 font-bold tracking-wider uppercase text-xs hover:bg-gray-50 transition-colors whitespace-nowrap">
-                        Change
-                      </button>
-                    ) : (
-                      <button type="button" onClick={requestEmailCode} disabled={emailVerification.busy === 'send'}
-                        className="px-5 py-3 bg-[#1a365d] text-white font-bold tracking-wider uppercase text-xs hover:bg-[#2a4365] transition-colors disabled:opacity-60 flex items-center gap-2 whitespace-nowrap">
-                        {emailVerification.busy === 'send'
-                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending</>
-                          : <><Mail className="w-4 h-4" /> Verify</>}
-                      </button>
-                    )}
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input type="email" readOnly
+                      className="w-full pl-11 pr-10 py-3 bg-gray-100 border border-green-500 rounded-sm outline-none text-gray-700 cursor-not-allowed"
+                      value={guestEmail} />
+                    <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
                   </div>
-                  {emailVerified ? (
-                    <p className="text-green-600 text-xs mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Email address verified</p>
-                  ) : (
-                    <p className="text-gray-500 text-xs mt-1">We send a one-time code here to confirm the address before your IDs are uploaded.</p>
-                  )}
-                  {errors.email && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.email}</p>}
-                  {!emailVerification.codeSent && emailVerification.error && (
-                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {emailVerification.error}</p>
-                  )}
+                  <p className="text-green-600 text-xs mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Verified when you signed in — your confirmation goes here
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Phone Number</label>
@@ -812,42 +572,6 @@ const GuestPortal = () => {
                   {errors.phone && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {errors.phone}</p>}
                 </div>
               </div>
-
-              {emailVerification.codeSent && !emailVerified && (
-                <div className="mt-6 bg-[#1a365d]/5 border border-[#1a365d]/15 rounded-lg p-6 animate-in fade-in duration-300">
-                  <div className="flex items-start gap-3 mb-4">
-                    <Mail className="w-5 h-5 text-[#1a365d] mt-0.5 shrink-0" />
-                    <div>
-                      <h4 className="font-bold text-[#1a365d] text-sm">Confirm your email address</h4>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {emailVerification.notice || `A 6-digit code has been sent to ${booking.email}.`} Enter it below to unlock your ID uploads.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <input type="text" inputMode="numeric" maxLength={6} autoComplete="one-time-code" placeholder="Enter code"
-                      className="w-full sm:w-52 text-center font-mono text-lg tracking-[0.4em] indent-[0.4em] px-4 py-3 bg-white border border-gray-300 rounded-sm outline-none focus:border-[#d4af37]"
-                      value={emailVerification.code}
-                      onChange={e => setEmailVerification(prev => ({ ...prev, code: e.target.value.replace(/\D/g, '').substring(0, 6), error: '' }))}
-                      onKeyDown={e => { if (e.key === 'Enter') confirmEmailCode(); }} />
-                    <button type="button" onClick={confirmEmailCode}
-                      disabled={emailVerification.code.length !== 6 || emailVerification.busy === 'confirm'}
-                      className="px-6 py-3 bg-[#1a365d] text-white font-bold tracking-wider uppercase text-xs hover:bg-[#2a4365] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                      {emailVerification.busy === 'confirm'
-                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying</>
-                        : 'Verify Email'}
-                    </button>
-                    <button type="button" onClick={requestEmailCode}
-                      disabled={emailVerification.resendIn > 0 || emailVerification.busy === 'send'}
-                      className="text-xs font-bold uppercase tracking-wider text-[#1a365d] hover:underline disabled:text-gray-400 disabled:no-underline sm:ml-auto">
-                      {emailVerification.resendIn > 0 ? `Resend in ${emailVerification.resendIn}s` : 'Resend code'}
-                    </button>
-                  </div>
-                  {emailVerification.error && (
-                    <p className="text-red-500 text-xs mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {emailVerification.error}</p>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center gap-3 mb-6">
@@ -858,19 +582,7 @@ const GuestPortal = () => {
               Uploading government-issued IDs for all guests is mandatory. The details on each ID are read and confirmed against government records to fill in your booking.
             </p>
 
-            {!emailVerified && (
-              <div className="mb-8 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <Lock className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-amber-900">Verify your email to upload ID documents</p>
-                  <p className="text-xs text-amber-800 mt-1">
-                    Enter the code we email you above. Uploads open as soon as the address is confirmed.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className={`space-y-12 transition-opacity duration-300 ${emailVerified ? '' : 'opacity-50 pointer-events-none select-none'}`}>
+            <div className="space-y-12">
               {Array.from({ length: Math.ceil(booking.guests.length / 2) }).map((_, roomIndex) => (
                 <div key={roomIndex} className="mb-10 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="bg-[#1a365d]/5 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -933,9 +645,8 @@ const GuestPortal = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      disabled={!emailVerified}
                       onChange={(e) => handleFileChange(index, e.target.files[0])}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                     />
                     <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 ${
                       files[index] ? 'border-green-500 bg-green-50/50' : 'border-gray-300 bg-white group-hover:border-[#d4af37]'
@@ -971,19 +682,9 @@ const GuestPortal = () => {
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
-                          {emailVerified ? (
-                            <>
-                              <UploadCloud className="w-8 h-8 text-gray-400 mb-2 group-hover:text-[#d4af37]" />
-                              <p className="text-sm font-medium text-gray-700">Upload {guest.idType} image to Extract Details</p>
-                              <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 5MB</p>
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="w-8 h-8 text-gray-400 mb-2" />
-                              <p className="text-sm font-medium text-gray-700">Verify your email to upload this ID</p>
-                              <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 5MB</p>
-                            </>
-                          )}
+                          <UploadCloud className="w-8 h-8 text-gray-400 mb-2 group-hover:text-[#d4af37]" />
+                          <p className="text-sm font-medium text-gray-700">Upload {guest.idType} image to Extract Details</p>
+                          <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 5MB</p>
                         </div>
                       )}
                     </div>
@@ -1204,11 +905,18 @@ const GuestPortal = () => {
             </div>
           </div>
           
-          <div className="text-center flex justify-center gap-4 mt-8">
+          <p className="text-center text-sm text-gray-500 mt-8">
+            A copy of this confirmation is kept in your account — sign in with <span className="font-medium text-gray-700">{guestEmail}</span> any time to view it or download the PDF again.
+          </p>
+
+          <div className="text-center flex flex-wrap justify-center gap-4 mt-6">
             <button onClick={handleDownloadPDF} className="px-8 py-3 bg-[#d4af37] text-white font-bold tracking-widest uppercase text-sm shadow-md hover:bg-[#c5a028] transition-colors flex items-center gap-2">
               <Download className="w-5 h-5" /> Download PDF
             </button>
-            <button onClick={() => navigate('/')} className="px-8 py-3 border-2 border-[#1a365d] text-[#1a365d] font-bold tracking-widest uppercase text-sm hover:bg-[#1a365d] hover:text-white transition-colors">
+            <button onClick={() => navigate('/account')} className="px-8 py-3 border-2 border-[#1a365d] text-[#1a365d] font-bold tracking-widest uppercase text-sm hover:bg-[#1a365d] hover:text-white transition-colors">
+              My Reservations
+            </button>
+            <button onClick={() => navigate('/')} className="px-8 py-3 text-gray-500 font-bold tracking-widest uppercase text-sm hover:text-[#1a365d] transition-colors">
               Return Home
             </button>
           </div>
