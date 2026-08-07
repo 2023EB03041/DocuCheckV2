@@ -6,11 +6,13 @@
 const BASE_RATE = 5000;
 const RATE_STEP = 5000;
 
+// Twenty rooms, thinning by two a floor as the tier rises — the mirror of the
+// rate, which climbs by a fixed step over the same four tiers.
 const ROOM_TIERS = [
-  { type: 'Standard',           floor: 1, roomCount: 12 },
-  { type: 'Deluxe',             floor: 2, roomCount: 10 },
-  { type: 'Ocean View',         floor: 3, roomCount: 8 },
-  { type: 'Presidential Suite', floor: 4, roomCount: 6 }
+  { type: 'Standard',           floor: 1, roomCount: 8 },
+  { type: 'Deluxe',             floor: 2, roomCount: 6 },
+  { type: 'Ocean View',         floor: 3, roomCount: 4 },
+  { type: 'Presidential Suite', floor: 4, roomCount: 2 }
 ].map((tier, index) => ({ ...tier, pricePerNight: BASE_RATE + index * RATE_STEP }));
 
 // Tax added on top of the room charge, applied identically wherever a total is
