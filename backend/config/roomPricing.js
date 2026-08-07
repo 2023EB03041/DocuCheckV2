@@ -6,7 +6,7 @@
 const BASE_RATE = 5000;
 const RATE_STEP = 5000;
 
-export const ROOM_TIERS = [
+const ROOM_TIERS = [
   { type: 'Standard',           floor: 1, roomCount: 12 },
   { type: 'Deluxe',             floor: 2, roomCount: 10 },
   { type: 'Ocean View',         floor: 3, roomCount: 8 },
@@ -20,7 +20,7 @@ export const GST_RATE = 0.18;
 // Two guests share a room, so this is how many rooms a party needs.
 export const roomsForGuests = (guestCount) => Math.max(1, Math.ceil((Number(guestCount) || 1) / 2));
 
-export const priceForType = (type) =>
+const priceForType = (type) =>
   ROOM_TIERS.find(tier => tier.type === type)?.pricePerNight ?? null;
 
 // Whole nights between the two dates. A stay is charged for at least one night,

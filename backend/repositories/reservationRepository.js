@@ -34,9 +34,6 @@ class ReservationRepository {
     return await newReservation.save();
   }
 
-  async saveReservation(reservation) {
-    return await reservation.save();
-  }
 }
 
 export default new ReservationRepository();

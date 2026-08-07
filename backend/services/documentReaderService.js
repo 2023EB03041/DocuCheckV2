@@ -176,15 +176,6 @@ const readDocumentFields = async (imageBuffer) => {
   };
 };
 
-// Why a card could not be read. The caller needs the difference: a card we
-// could not reach the reader for is worth trying again with, a card we read and
-// could not make sense of is not.
-export const READING = {
-  UNREADABLE: 'unreadable',
-  NOT_AN_ID: 'not-an-id',
-  READER_UNAVAILABLE: 'reader-unavailable'
-};
-
 export const extractDocumentDetails = async (imageBuffer) => {
   try {
     const document = await readDocumentFields(imageBuffer);
@@ -192,7 +183,6 @@ export const extractDocumentDetails = async (imageBuffer) => {
     if (!document.isIdDocument) {
       return {
         success: false,
-        reason: READING.NOT_AN_ID,
         error: 'This does not look like a government-issued ID. Please upload a clear photo of your Aadhaar or PAN card.'
       };
     }
@@ -207,7 +197,6 @@ export const extractDocumentDetails = async (imageBuffer) => {
     if (!nameReadable || !ageReadable) {
       return {
         success: false,
-        reason: READING.UNREADABLE,
         error: 'We could not clearly read the details on this ID. Please upload a sharper, better-quality photo — good lighting, no blur, and all text clearly visible.'
       };
     }
@@ -223,12 +212,12 @@ export const extractDocumentDetails = async (imageBuffer) => {
     };
   } catch (error) {
     // Nothing was learned about the document itself here — the reader could not
-    // be reached, or answered with something unusable. Reported as its own
-    // outcome so a passing outage is never mistaken for a bad ID.
+    // be reached, or answered with something unusable. Flagged as retryable so
+    // a passing outage is never mistaken for a verdict on somebody's ID.
     console.error('Document reader unavailable:', error.message);
     return {
       success: false,
-      reason: READING.READER_UNAVAILABLE,
+      retryable: true,
       error: 'We could not read your document just now. Please try uploading it again in a moment.'
     };
   }

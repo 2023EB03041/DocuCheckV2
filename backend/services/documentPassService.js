@@ -42,4 +42,3 @@ class DocumentPassService {
 }
 
 export default new DocumentPassService();
-export { PASS_TTL_SECONDS };

@@ -113,8 +113,6 @@ class ReservationService {
       reservationId,
       guests: verifiedGuests,
       email: guestEmail,
-      emailVerified: true,
-      emailVerifiedAt: new Date(),
       phone,
       roomType,
       roomNumbers: availableRooms.map(r => r.roomNumber),

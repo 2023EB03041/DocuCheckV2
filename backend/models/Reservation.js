@@ -31,11 +31,10 @@ const reservationSchema = new mongoose.Schema({
       governmentVerified: { type: Boolean, default: true }
     }
   }],
+  // The address of the account the stay was booked from. A booking can only be
+  // made by a signed-in guest, so this address has always answered a code sent
+  // to it — there is no separate flag saying so, because there is no other case.
   email: String,
-  // Set once the address has answered a one-time code, which is required
-  // before any ID document is uploaded against the booking.
-  emailVerified: { type: Boolean, default: false },
-  emailVerifiedAt: Date,
   phone: String,
   roomType: String,
   roomNumbers: [String],
