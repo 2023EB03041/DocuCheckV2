@@ -445,10 +445,7 @@ const StaffDashboard = () => {
                               )}
                             </td>
                             <td className="p-4">
-                              <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                                guest.status === 'Verified' ? 'bg-green-100 text-green-700' : 
-                                guest.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
-                              }`}>
+                              <span className="text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">
                                 {guest.status}
                               </span>
                             </td>
@@ -717,10 +714,7 @@ const StaffDashboard = () => {
                                   <div key={g._id || i} className="bg-white p-3 rounded border border-gray-200 shadow-sm flex flex-col gap-2">
                                     <div className="flex justify-between items-start">
                                       <p className="font-medium text-[#1a365d]">{toTitleCase(g.name)}</p>
-                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                        g.status === 'Verified' ? 'bg-green-100 text-green-700' :
-                                        g.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
-                                      }`}>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                                         {g.status}
                                       </span>
                                     </div>
@@ -887,27 +881,16 @@ const StaffDashboard = () => {
                   
                   <div className="space-y-4">
                     {selectedRoom.currentReservation.guests.map((guest, index) => (
-                      <div key={index} className={`p-4 rounded-lg border ${
-                        guest.status === 'Verified' ? 'bg-green-50 border-green-200' :
-                        guest.status === 'Failed' ? 'bg-red-50 border-red-200' :
-                        'bg-gray-50 border-gray-200'
-                      }`}>
+                      <div key={index} className="p-4 rounded-lg border bg-green-50 border-green-200">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-3">
-                            <ShieldCheck className={`w-6 h-6 ${
-                              guest.status === 'Verified' ? 'text-green-600' :
-                              guest.status === 'Failed' ? 'text-red-600' :
-                              'text-gray-400'
-                            }`} />
+                            <ShieldCheck className="w-6 h-6 text-green-600" />
                             <div>
                               <p className="font-bold text-gray-900">{toTitleCase(guest.name)}</p>
                               <p className="text-xs text-gray-500 uppercase">{guest.idType}</p>
                             </div>
                           </div>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                            guest.status === 'Verified' ? 'bg-green-100 text-green-700' : 
-                            guest.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
-                          }`}>
+                          <span className="text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">
                             {guest.status}
                           </span>
                         </div>

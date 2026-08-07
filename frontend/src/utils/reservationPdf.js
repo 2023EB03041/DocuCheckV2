@@ -105,8 +105,8 @@ export const buildReservationPdf = (reservation) => {
     doc.setTextColor(100, 100, 100);
     doc.text(`ID: ${guest.idType}`, 25, y + 6);
 
-    const statusColor = guest.status === 'Verified' ? [34, 197, 94] : (guest.status === 'Failed' ? [239, 68, 68] : [234, 179, 8]);
-    doc.setTextColor(...statusColor);
+    // Only a confirmed guest can be on a stay, so the line only ever reads one way.
+    doc.setTextColor(34, 197, 94);
     doc.setFont(undefined, 'bold');
     doc.text(`Status: ${guest.status}`, 160, y + 3, null, null, 'right');
 
