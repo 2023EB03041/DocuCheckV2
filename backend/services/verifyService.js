@@ -5,12 +5,10 @@ import { verifyDocument, extractDocumentDetails } from './documentReaderService.
 import { verifyAgainstGovernmentRecord, VERIFICATION_LEVEL } from './govVerificationService.js';
 import { normalizeEmail } from './emailOtpService.js';
 
-// A document that no government record confirms is rejected outright. Set
-// REQUIRE_GOVERNMENT_VERIFICATION=false to accept a reading on its own, which
-// is only useful while the verification provider is unavailable.
-const requiresGovernmentVerification = () => {
-  return (process.env.REQUIRE_GOVERNMENT_VERIFICATION || 'true').toLowerCase() !== 'false';
-};
+// A document that no government record confirms is rejected outright, with no
+// way to turn that off. Reading a card tells us what it claims; only the
+// issuing authority tells us the claim is true, and a guest is never admitted
+// on the strength of the former alone.
 
 /**
  * Tells the guest what to do next when a document could not be confirmed.
@@ -53,7 +51,7 @@ const attachVerification = async (result) => {
   result.governmentVerified = verification.verified;
   result.verificationRemarks = verification.remarks;
 
-  if (requiresGovernmentVerification() && !verification.verified) {
+  if (!verification.verified) {
     // Details are cleared so an unconfirmed document cannot auto-fill the form.
     result.success = false;
     result.extractedName = '';
@@ -101,16 +99,16 @@ class VerifyService {
     return extractionResult;
   }
 
-  // verifiedEmail is the address confirmed by one-time code on this request.
-  // Documents may only be attached to a booking made under that same address,
-  // so one guest's verification cannot be used to load IDs onto another's stay.
-  async verifyGuestDocument(reservationId, guestIndex, file, verifiedEmail) {
+  // guestEmail is the signed-in guest's address. Documents may only be attached
+  // to a booking made under that same address, so one guest's session cannot be
+  // used to load IDs onto another's stay.
+  async verifyGuestDocument(reservationId, guestIndex, file, guestEmail) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
       throw new Error('Reservation not found');
     }
 
-    if (!verifiedEmail || normalizeEmail(reservation.email) !== verifiedEmail) {
+    if (!guestEmail || normalizeEmail(reservation.email) !== guestEmail) {
       throw new Error('This booking belongs to a different email address');
     }
 

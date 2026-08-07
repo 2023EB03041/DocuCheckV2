@@ -15,6 +15,12 @@ class ReservationRepository {
     return await Reservation.findOne({ reservationId });
   }
 
+  // Every stay booked under one address, newest arrival first. Addresses are
+  // stored normalized, so an exact match is enough.
+  async findByEmail(email) {
+    return await Reservation.find({ email }).sort({ checkInDate: -1 });
+  }
+
   async findByDocumentHash(documentHash) {
     return await Reservation.findOne({ "guests.documentHash": documentHash });
   }

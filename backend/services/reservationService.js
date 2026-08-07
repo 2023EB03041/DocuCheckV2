@@ -1,6 +1,5 @@
 import reservationRepository from '../repositories/reservationRepository.js';
 import roomRepository from '../repositories/roomRepository.js';
-import { normalizeEmail } from './emailOtpService.js';
 import { quoteStay } from '../config/roomPricing.js';
 
 // A stay counts as finished once its check-out date is behind us; the guest is
@@ -41,6 +40,25 @@ class ReservationService {
     return await reservationRepository.getPastReservations(departureCutoff());
   }
 
+  // Everything booked under a signed-in guest's address, split by whether the
+  // stay is still ahead of them. The document images themselves are not exposed
+  // here — the dashboard only reports whether each ID cleared.
+  async getReservationsForGuest(email) {
+    const cutoff = departureCutoff();
+    const stays = await reservationRepository.findByEmail(email);
+
+    const strip = (reservation) => {
+      const plain = reservation.toObject();
+      plain.guests = (plain.guests || []).map(({ documentUrl, documentHash, ...guest }) => guest);
+      return plain;
+    };
+
+    return {
+      upcoming: stays.filter(r => new Date(r.checkOutDate) >= cutoff).map(strip).reverse(),
+      past: stays.filter(r => new Date(r.checkOutDate) < cutoff).map(strip)
+    };
+  }
+
   async getReservationById(reservationId) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
@@ -49,14 +67,15 @@ class ReservationService {
     return reservation;
   }
 
-  // verifiedEmail is the address the guest confirmed with a one-time code. The
-  // booking is written against that address rather than whatever the form sent,
-  // so a confirmed code cannot be reused to book under a different email.
-  async createBooking(bookingData, verifiedEmail) {
-    const { guests, email, phone, roomType, checkInDate, checkOutDate } = bookingData;
+  // guestEmail is the address of the signed-in guest, confirmed by a code sent
+  // to it when they logged in. The booking is written against that address and
+  // not against anything the form sent, so a stay always belongs to the account
+  // that made it and shows up on that account's dashboard afterwards.
+  async createBooking(bookingData, guestEmail) {
+    const { guests, phone, roomType, checkInDate, checkOutDate } = bookingData;
 
-    if (!verifiedEmail || normalizeEmail(email) !== verifiedEmail) {
-      throw new Error('This booking must use the email address that was verified.');
+    if (!guestEmail) {
+      throw new Error('Please sign in before making a reservation.');
     }
 
     // The price is worked out here from the rate card rather than taken from the
@@ -85,7 +104,7 @@ class ReservationService {
     const savedReservation = await reservationRepository.createReservation({
       reservationId,
       guests,
-      email: verifiedEmail,
+      email: guestEmail,
       emailVerified: true,
       emailVerifiedAt: new Date(),
       phone,

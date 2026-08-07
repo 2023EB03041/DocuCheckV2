@@ -1,8 +1,31 @@
-import { Routes, Route, Link } from 'react-router-dom';
+import { useState, useCallback } from 'react';
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { UserCircle2 } from 'lucide-react';
 import GuestPortal from './pages/GuestPortal';
+import GuestLogin from './pages/GuestLogin';
+import GuestDashboard from './pages/GuestDashboard';
 import StaffDashboard from './pages/StaffDashboard';
+import { getGuestSession, clearGuestSession } from './utils/guestSession';
+
+// Pages only a signed-in guest may reach. Booking is one of them: an account is
+// what a reservation is filed under, and verifying the address at sign-in is
+// what makes it a reachable one.
+const RequireGuest = ({ session, children }) => {
+  const location = useLocation();
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return children;
+};
 
 function App() {
+  const [session, setSession] = useState(getGuestSession);
+
+  const signOut = useCallback(() => {
+    clearGuestSession();
+    setSession(null);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col font-sans">
       {/* z-40 keeps the sticky bar above page content (the hero's blurred card
@@ -20,9 +43,16 @@ function App() {
                 <span className="text-[10px] tracking-[0.2em] text-[#d4af37] font-semibold uppercase">Resort & Spa</span>
               </div>
             </div>
-            <div className="flex space-x-2 items-center">
-              <Link to="/" className="text-gray-600 hover:text-white hover:bg-[#1a365d] px-6 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase">GUEST</Link>
-              <Link to="/staff" className="text-gray-600 hover:text-white hover:bg-[#1a365d] px-6 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase">STAFF</Link>
+            <div className="flex space-x-1 sm:space-x-2 items-center">
+              <Link to="/" className="text-gray-600 hover:text-white hover:bg-[#1a365d] px-4 sm:px-6 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase">GUEST</Link>
+              <Link to="/staff" className="text-gray-600 hover:text-white hover:bg-[#1a365d] px-4 sm:px-6 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase">STAFF</Link>
+              {session ? (
+                <Link to="/account" title={session.email} className="bg-[#1a365d] text-white hover:bg-[#2a4365] px-4 sm:px-5 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase flex items-center gap-2">
+                  <UserCircle2 className="w-4 h-4" /> <span className="hidden sm:inline">My Account</span>
+                </Link>
+              ) : (
+                <Link to="/login" className="border border-[#1a365d] text-[#1a365d] hover:bg-[#1a365d] hover:text-white px-4 sm:px-6 py-2.5 rounded-full transition-all duration-300 font-bold text-xs tracking-[0.15em] uppercase">SIGN IN</Link>
+              )}
             </div>
           </div>
         </div>
@@ -223,7 +253,19 @@ function App() {
               </footer>
             </div>
           } />
-          <Route path="/book" element={<GuestPortal />} /> 
+          <Route path="/login" element={
+            session ? <Navigate to="/account" replace /> : <GuestLogin onSignIn={setSession} />
+          } />
+          <Route path="/account" element={
+            <RequireGuest session={session}>
+              <GuestDashboard session={session} onSignOut={signOut} />
+            </RequireGuest>
+          } />
+          <Route path="/book" element={
+            <RequireGuest session={session}>
+              <GuestPortal session={session} onSessionExpired={signOut} />
+            </RequireGuest>
+          } />
           <Route path="/staff" element={<StaffDashboard />} />
         </Routes>
       </main>

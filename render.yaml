@@ -32,8 +32,6 @@ services:
       # nothing from the guest.
       - key: AADHAAR_DEV_OTP
         value: "121212"
-      - key: REQUIRE_GOVERNMENT_VERIFICATION
-        value: "true"
       # Stytch, which emails and checks the guest's verification code.
       # Credentials are set in the dashboard, never in the repo.
       - key: STYTCH_PROJECT_ID
