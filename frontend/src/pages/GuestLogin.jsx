@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Loader2, AlertCircle, ShieldCheck, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { saveGuestSession } from '../utils/guestSession';
@@ -178,10 +178,6 @@ const GuestLogin = ({ onSignIn }) => {
           )}
         </div>
       </div>
-
-      <p className="text-center text-xs text-gray-500 mt-6">
-        Staff member? <Link to="/staff" className="text-[#1a365d] font-bold hover:underline">Use the staff portal</Link>
-      </p>
     </div>
   );
 };
