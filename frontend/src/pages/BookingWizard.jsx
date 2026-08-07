@@ -30,7 +30,7 @@ const VerifyStep = ({ state, children }) => (
   </div>
 );
 
-const GuestPortal = ({ session, onSessionExpired }) => {
+const BookingWizard = ({ session, onSessionExpired }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -950,4 +950,4 @@ const GuestPortal = ({ session, onSessionExpired }) => {
   );
 };
 
-export default GuestPortal;
+export default BookingWizard;

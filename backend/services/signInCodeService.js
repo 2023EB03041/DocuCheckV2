@@ -61,7 +61,7 @@ const postToStytch = async (path, body) => {
   return { ok: response.ok, status: response.status, payload: await response.json().catch(() => ({})) };
 };
 
-class EmailOtpService {
+class SignInCodeService {
   /**
    * Asks Stytch to email a code to the address. Nothing is written here —
    * Stytch holds the code and decides when it expires. The returned id names
@@ -158,4 +158,4 @@ class EmailOtpService {
   }
 }
 
-export default new EmailOtpService();
+export default new SignInCodeService();

@@ -1,4 +1,4 @@
-import verifyService from '../services/verifyService.js';
+import idCheckService from '../services/idCheckService.js';
 
 class VerifyController {
   /**
@@ -14,7 +14,7 @@ class VerifyController {
 
       const { checkInDate, checkOutDate } = req.body;
 
-      const result = await verifyService.verifyUpload(req.file, checkInDate, checkOutDate, req.guestEmail);
+      const result = await idCheckService.verifyUpload(req.file, checkInDate, checkOutDate, req.guestEmail);
       res.json(result);
     } catch (error) {
       console.error('Verification route error:', error);
