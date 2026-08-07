@@ -25,7 +25,6 @@ const roomSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
-  amenities: [String],
   image: String
 }, { timestamps: true });
 

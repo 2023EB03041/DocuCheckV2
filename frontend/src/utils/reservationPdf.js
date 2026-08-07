@@ -24,7 +24,7 @@ const chargesFor = (reservation) => {
   return { rooms, nights, rate, subtotal, gst: total - subtotal, total };
 };
 
-export const buildReservationPdf = (reservation) => {
+const buildReservationPdf = (reservation) => {
   const doc = new jsPDF();
   const { rooms, nights, rate, subtotal, gst, total } = chargesFor(reservation);
 

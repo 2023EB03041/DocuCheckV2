@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import reservationRepository from '../repositories/reservationRepository.js';
 import IdDocument from '../models/IdDocument.js';
-import { extractDocumentDetails, READING } from './documentReaderService.js';
+import { extractDocumentDetails } from './documentReaderService.js';
 import { verifyAgainstGovernmentRecord, VERIFICATION_LEVEL } from './govVerificationService.js';
 import documentPassService from './documentPassService.js';
 
@@ -18,7 +18,7 @@ import documentPassService from './documentPassService.js';
 //             did not complete, so the same card is worth another go.
 //   REPLACE — this document cannot be the one, either because the authority
 //             does not confirm it or because nothing exists to check it against.
-export const OUTCOME = { RETRY: 'retry', REPLACE: 'replace' };
+const OUTCOME = { RETRY: 'retry', REPLACE: 'replace' };
 
 // The only two document types with a record we can put a card to.
 const VERIFIABLE_TYPES = new Set(['aadhaar', 'pan']);
@@ -82,7 +82,7 @@ class VerifyService {
         verified: false,
         // A reader that could not be reached says nothing about the card, so the
         // same one is worth another go. A card we read and could not use is not.
-        outcome: reading.reason === READING.READER_UNAVAILABLE ? OUTCOME.RETRY : OUTCOME.REPLACE,
+        outcome: reading.retryable ? OUTCOME.RETRY : OUTCOME.REPLACE,
         message: reading.error
       };
     }
