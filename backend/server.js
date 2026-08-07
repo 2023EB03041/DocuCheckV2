@@ -74,11 +74,9 @@ const connectDB = async () => {
     await mongoose.connect(uri);
     console.log('Connected to MongoDB Atlas');
     
-    // Seed / top-up room inventory (idempotent: adds only missing rooms, so it
-    // grows an already-seeded DB without touching existing bookings).
+    // Bring the room inventory into line with the rate card, in both directions.
     // The tier and its rate are set on every run, not only on insert, so rooms
-    // seeded against an older rate card are brought back in line and every room
-    // of a tier is priced the same.
+    // seeded against an older card are corrected rather than left stale.
     const desiredRooms = buildRoomInventory();
 
     await Room.bulkWrite(desiredRooms.map((r) => ({
@@ -91,7 +89,22 @@ const connectDB = async () => {
         upsert: true,
       },
     })));
-    console.log(`Room inventory ensured: ${desiredRooms.length} rooms.`);
+
+    // A tier that has shrunk leaves rooms behind, and an inventory that only
+    // ever grows would keep selling them. Those are withdrawn — but never one
+    // that is holding a stay, since a guest booked into it has to keep it.
+    const retired = await Room.deleteMany({
+      roomNumber: { $nin: desiredRooms.map(r => r.roomNumber) },
+      currentReservation: { $in: [null, undefined] }
+    });
+
+    const stranded = await Room.countDocuments({
+      roomNumber: { $nin: desiredRooms.map(r => r.roomNumber) }
+    });
+
+    console.log(`Room inventory ensured: ${desiredRooms.length} rooms.`
+      + (retired.deletedCount ? ` Withdrew ${retired.deletedCount} no longer in the rate card.` : '')
+      + (stranded ? ` ${stranded} kept until their current stay ends.` : ''));
 
     // Seed default Superuser for PMS Demo
     const userCount = await User.countDocuments();
