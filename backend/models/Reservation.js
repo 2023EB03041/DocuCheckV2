@@ -10,19 +10,25 @@ const reservationSchema = new mongoose.Schema({
     name: { type: String, required: true },
     age: { type: Number },
     sex: { type: String, enum: ['Male', 'Female', 'Other', ''] },
-    idType: { type: String, enum: ['Aadhaar Card', 'Driving License', 'PAN Card', 'None'], default: 'None' },
-    status: { type: String, enum: ['Pending', 'Verified', 'Failed'], default: 'Pending' },
+    // The type printed on the card that was confirmed, not one picked on a form.
+    // Only these two have a record a card can be put to.
+    idType: { type: String, enum: ['Aadhaar Card', 'PAN Card'], required: true },
+    // A guest only reaches a reservation once their ID has been confirmed
+    // against the issuing authority's record, so this has one value. It is kept
+    // as a field because the confirmation and the staff screens read it, and
+    // because a stay that somehow held anything else would be a bug worth
+    // failing on rather than displaying.
+    status: { type: String, enum: ['Verified'], default: 'Verified' },
     documentUrl: String,
     documentHash: String,
     verificationDetails: {
       extractedName: String,
-      confidenceScore: Number,
       verificationTime: Date,
       remarks: String,
-      // How strongly the identity was established: confirmed against a
-      // government record, or read off the document but not confirmed.
-      verificationLevel: { type: String, enum: ['government', 'extraction-only', 'failed'] },
-      governmentVerified: { type: Boolean, default: false }
+      // Kept for the staff record. Only a government-confirmed document can be
+      // stored, so this says which record answered rather than how far we got.
+      verificationLevel: { type: String, enum: ['government'], default: 'government' },
+      governmentVerified: { type: Boolean, default: true }
     }
   }],
   email: String,

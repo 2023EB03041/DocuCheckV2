@@ -1,176 +1,156 @@
 import crypto from 'crypto';
 import reservationRepository from '../repositories/reservationRepository.js';
 import IdDocument from '../models/IdDocument.js';
-import { verifyDocument, extractDocumentDetails } from './documentReaderService.js';
+import { extractDocumentDetails, READING } from './documentReaderService.js';
 import { verifyAgainstGovernmentRecord, VERIFICATION_LEVEL } from './govVerificationService.js';
-import { normalizeEmail } from './emailOtpService.js';
+import documentPassService from './documentPassService.js';
 
-// A document that no government record confirms is rejected outright, with no
-// way to turn that off. Reading a card tells us what it claims; only the
-// issuing authority tells us the claim is true, and a guest is never admitted
-// on the strength of the former alone.
+// Nothing gets through on a reading alone. Reading a card only tells us what it
+// claims; every card is put to the authority that issued it, and only an answer
+// confirming it lets the guest move on. There is no setting that relaxes this.
+//
+// A card that does not clear is never recorded against anybody — it is handed
+// straight back with something to do about it. That is the whole of this file's
+// job: issue a pass, or say why not and what to try next.
+
+// What the guest should do about a card that did not clear.
+//   RETRY   — nothing is known to be wrong with the document; the check itself
+//             did not complete, so the same card is worth another go.
+//   REPLACE — this document cannot be the one, either because the authority
+//             does not confirm it or because nothing exists to check it against.
+export const OUTCOME = { RETRY: 'retry', REPLACE: 'replace' };
+
+// The only two document types with a record we can put a card to.
+const VERIFIABLE_TYPES = new Set(['aadhaar', 'pan']);
+
+const ACCEPTED_DOCUMENTS = 'Aadhaar or PAN card';
+
+// Model wording for a card we could confirm, keyed by what the reader saw.
+const MODEL_ID_TYPE = { aadhaar: 'Aadhaar Card', pan: 'PAN Card' };
 
 /**
- * Tells the guest what to do next when a document could not be confirmed.
- * Aadhaar, driving licences and passports have no automatic check available,
- * so the guest is pointed at a document that does.
+ * What to tell a guest whose card did not clear, and whether the same card is
+ * worth trying again. The distinction matters: an authority that answered "no"
+ * is final, whereas one that could not be reached says nothing about the card.
  */
-const rejectionMessage = (verification) => {
+const rejection = (verification) => {
   if (verification.level === VERIFICATION_LEVEL.FAILED) {
-    return `${verification.remarks} Please upload a different ID.`;
+    return {
+      outcome: OUTCOME.REPLACE,
+      message: `${verification.remarks} Please upload a different ID.`
+    };
+  }
+
+  if (VERIFIABLE_TYPES.has(verification.idType)) {
+    // The right kind of card — the check simply did not complete.
+    return {
+      outcome: OUTCOME.RETRY,
+      message: `${verification.remarks} Please try uploading it again in a moment.`
+    };
   }
 
   if (verification.idType === 'unknown') {
-    return 'We could not tell which type of ID this is. Please upload a clear photo of your PAN card.';
+    return {
+      outcome: OUTCOME.REPLACE,
+      message: `We could not tell which type of ID this is. Please upload a clear photo of your ${ACCEPTED_DOCUMENTS}.`
+    };
   }
 
-  if (!verification.checked && verification.remarks.includes('temporarily unavailable')) {
-    return 'Verification is temporarily unavailable. Please try again in a few minutes.';
-  }
-
-  return `${verification.remarks} Please upload your PAN card instead, which we can confirm immediately.`;
-};
-
-/**
- * Runs the government check for a document that was read successfully, and
- * folds the outcome into the result. The raw document is removed on the way
- * out so the document number never leaves the server.
- */
-const attachVerification = async (result) => {
-  const document = result.document;
-  delete result.document;
-
-  if (!result.success || !document) {
-    return result;
-  }
-
-  const verification = await verifyAgainstGovernmentRecord(document);
-
-  result.idType = verification.idType;
-  result.verificationLevel = verification.level;
-  result.governmentVerified = verification.verified;
-  result.verificationRemarks = verification.remarks;
-
-  if (!verification.verified) {
-    // Details are cleared so an unconfirmed document cannot auto-fill the form.
-    result.success = false;
-    result.extractedName = '';
-    result.extractedAge = null;
-    result.extractedSex = '';
-    result.error = rejectionMessage(verification);
-    result.remarks = result.error;
-  }
-
-  return result;
+  return {
+    outcome: OUTCOME.REPLACE,
+    message: `${verification.remarks} Please upload your ${ACCEPTED_DOCUMENTS} instead, which we can confirm immediately.`
+  };
 };
 
 class VerifyService {
-  async extractDetails(file, checkInDateStr, checkOutDateStr) {
+  /**
+   * The one place a document is checked. Reads the card, puts it to the issuing
+   * authority, and on success stores it and issues the pass the booking will
+   * ask for. Anything short of a confirmed document comes back as
+   * `{ verified: false }` with a message and what to do next — never as a
+   * status recorded against a guest.
+   */
+  async verifyUpload(file, checkInDateStr, checkOutDateStr, guestEmail) {
     const fileBuffer = file.buffer;
     const documentHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
 
-    if (checkInDateStr && checkOutDateStr) {
-      const checkInDate = new Date(checkInDateStr);
-      const checkOutDate = new Date(checkOutDateStr);
-      
-      const existingResArray = await reservationRepository.findAllByDocumentHash(documentHash);
-      if (existingResArray && existingResArray.length > 0) {
-        const overlaps = existingResArray.some(res => {
-          const resCheckIn = new Date(res.checkInDate);
-          const resCheckOut = new Date(res.checkOutDate);
-          // Overlap: Start A < End B AND End A > Start B
-          return checkInDate < resCheckOut && checkOutDate > resCheckIn;
-        });
-        
-        if (overlaps) {
-          throw new Error('This ID document is already being used for a booking during overlapping dates.');
-        }
-      }
-    } else {
-      // Fallback if dates aren't provided
-      const existingRes = await reservationRepository.findByDocumentHash(documentHash);
-      if (existingRes) {
-        throw new Error('This ID document has already been used for a previous booking.');
-      }
+    await this.assertNotAlreadyInUse(documentHash, checkInDateStr, checkOutDateStr);
+
+    const reading = await extractDocumentDetails(fileBuffer);
+    if (!reading.success) {
+      return {
+        verified: false,
+        // A reader that could not be reached says nothing about the card, so the
+        // same one is worth another go. A card we read and could not use is not.
+        outcome: reading.reason === READING.READER_UNAVAILABLE ? OUTCOME.RETRY : OUTCOME.REPLACE,
+        message: reading.error
+      };
     }
 
-    const extractionResult = await attachVerification(await extractDocumentDetails(fileBuffer));
-
-    return extractionResult;
-  }
-
-  // guestEmail is the signed-in guest's address. Documents may only be attached
-  // to a booking made under that same address, so one guest's session cannot be
-  // used to load IDs onto another's stay.
-  async verifyGuestDocument(reservationId, guestIndex, file, guestEmail) {
-    const reservation = await reservationRepository.findById(reservationId);
-    if (!reservation) {
-      throw new Error('Reservation not found');
+    const verification = await verifyAgainstGovernmentRecord(reading.document);
+    if (!verification.verified) {
+      return { verified: false, ...rejection(verification) };
     }
 
-    if (!guestEmail || normalizeEmail(reservation.email) !== guestEmail) {
-      throw new Error('This booking belongs to a different email address');
-    }
-
-    const index = parseInt(guestIndex, 10);
-    if (isNaN(index) || index < 0 || index >= reservation.guests.length) {
-      throw new Error('Invalid guest index');
-    }
-
-    const guest = reservation.guests[index];
-    const fileBuffer = file.buffer;
-    
-    const verificationResult = await attachVerification(await verifyDocument(fileBuffer, guest.name));
-
-    const documentHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
-    
-    // Check if another reservation uses this hash for overlapping dates
-    const existingResArray = await reservationRepository.findAllByDocumentHash(documentHash);
-    const overlaps = existingResArray.some(res => {
-      if (res.reservationId === reservationId) return false; // Ignore own reservation
-      const resCheckIn = new Date(res.checkInDate);
-      const resCheckOut = new Date(res.checkOutDate);
-      const myCheckIn = new Date(reservation.checkInDate);
-      const myCheckOut = new Date(reservation.checkOutDate);
-      return myCheckIn < resCheckOut && myCheckOut > resCheckIn;
-    });
-
-    if (overlaps) {
-       throw new Error('This ID document is already being used for a booking during overlapping dates.');
-    }
-
-    // Save Document securely to MongoDB
-    const idDocument = new IdDocument({
+    // Only now, with the card confirmed, is anything kept.
+    const saved = await new IdDocument({
       filename: file.originalname,
       contentType: file.mimetype,
       data: fileBuffer,
-      documentHash: documentHash
-    });
-    const savedDocument = await idDocument.save();
-
-    guest.documentHash = documentHash;
-    // With verification required, success already implies a government record
-    // confirmed the document, so it alone decides the guest's standing.
-    guest.status = verificationResult.success ? 'Verified' : 'Failed';
-    guest.documentUrl = `/api/documents/${savedDocument._id}`; // Secure authenticated route
-    guest.verificationDetails = {
-      extractedName: (verificationResult.extractedName || '').substring(0, 50),
-      confidenceScore: verificationResult.confidenceScore,
-      verificationTime: new Date(),
-      remarks: verificationResult.verificationRemarks
-        ? `${verificationResult.remarks} ${verificationResult.verificationRemarks}`
-        : verificationResult.remarks,
-      verificationLevel: verificationResult.verificationLevel,
-      governmentVerified: verificationResult.governmentVerified === true
-    };
-
-    await reservationRepository.saveReservation(reservation);
+      documentHash
+    }).save();
 
     return {
-      message: `Verification completed for guest ${index + 1}`,
-      status: guest.status,
-      details: verificationResult
+      verified: true,
+      extractedName: reading.extractedName,
+      extractedAge: reading.extractedAge,
+      extractedSex: reading.extractedSex,
+      idType: MODEL_ID_TYPE[verification.idType],
+      remarks: verification.remarks,
+      // Handed back with the booking. Everything the reservation needs to record
+      // this guest is inside it, signed, so the booking neither re-reads the card
+      // nor trusts the browser for any of it.
+      documentPass: documentPassService.issuePass({
+        documentId: String(saved._id),
+        documentHash,
+        name: reading.extractedName,
+        age: reading.extractedAge,
+        sex: reading.extractedSex,
+        idType: MODEL_ID_TYPE[verification.idType],
+        remarks: verification.remarks,
+        transactionId: verification.transactionId || null
+      }, guestEmail)
     };
+  }
+
+  /**
+   * One document cannot hold two stays that overlap. Checked before the card is
+   * read so a document already in use costs nothing upstream.
+   */
+  async assertNotAlreadyInUse(documentHash, checkInDateStr, checkOutDateStr) {
+    if (checkInDateStr && checkOutDateStr) {
+      const checkInDate = new Date(checkInDateStr);
+      const checkOutDate = new Date(checkOutDateStr);
+
+      const existing = await reservationRepository.findAllByDocumentHash(documentHash);
+      const overlaps = (existing || []).some(res => {
+        const resCheckIn = new Date(res.checkInDate);
+        const resCheckOut = new Date(res.checkOutDate);
+        // Overlap: Start A < End B AND End A > Start B
+        return checkInDate < resCheckOut && checkOutDate > resCheckIn;
+      });
+
+      if (overlaps) {
+        throw new Error('This ID document is already being used for a booking during overlapping dates.');
+      }
+      return;
+    }
+
+    // Fallback if dates aren't provided
+    const existing = await reservationRepository.findByDocumentHash(documentHash);
+    if (existing) {
+      throw new Error('This ID document has already been used for a previous booking.');
+    }
   }
 }
 

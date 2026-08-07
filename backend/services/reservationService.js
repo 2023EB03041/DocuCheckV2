@@ -1,5 +1,6 @@
 import reservationRepository from '../repositories/reservationRepository.js';
 import roomRepository from '../repositories/roomRepository.js';
+import documentPassService from './documentPassService.js';
 import { quoteStay } from '../config/roomPricing.js';
 
 // A stay counts as finished once its check-out date is behind us; the guest is
@@ -71,12 +72,19 @@ class ReservationService {
   // to it when they logged in. The booking is written against that address and
   // not against anything the form sent, so a stay always belongs to the account
   // that made it and shows up on that account's dashboard afterwards.
+  //
+  // Every guest must present a pass showing their ID was already confirmed
+  // against the issuing authority's record. A stay therefore cannot exist with
+  // an unverified guest on it — there is no state in which a booking is made
+  // first and the documents sorted out afterwards.
   async createBooking(bookingData, guestEmail) {
     const { guests, phone, roomType, checkInDate, checkOutDate } = bookingData;
 
     if (!guestEmail) {
       throw new Error('Please sign in before making a reservation.');
     }
+
+    const verifiedGuests = this.readGuestPasses(guests, guestEmail);
 
     // The price is worked out here from the rate card rather than taken from the
     // request, so what is stored always matches the published rate for the tier,
@@ -103,7 +111,7 @@ class ReservationService {
     
     const savedReservation = await reservationRepository.createReservation({
       reservationId,
-      guests,
+      guests: verifiedGuests,
       email: guestEmail,
       emailVerified: true,
       emailVerifiedAt: new Date(),
@@ -125,6 +133,54 @@ class ReservationService {
     }
 
     return savedReservation;
+  }
+
+  /**
+   * Turns each guest's pass into the record stored against the stay. The name,
+   * age, sex and document type all come out of the pass rather than out of the
+   * request, so what is stored is what the authority confirmed and not what the
+   * browser typed. A guest without a valid pass stops the whole booking.
+   */
+  readGuestPasses(guests, guestEmail) {
+    if (!Array.isArray(guests) || guests.length === 0) {
+      throw new Error('Please add at least one guest before making a reservation.');
+    }
+
+    const seenDocuments = new Set();
+
+    return guests.map((guest, index) => {
+      const pass = documentPassService.readPass(guest?.documentPass, guestEmail);
+
+      if (!pass) {
+        throw new Error(
+          `Guest ${index + 1} has no confirmed ID document. Please upload an ID for every guest and wait for it to be confirmed before booking.`
+        );
+      }
+
+      if (seenDocuments.has(pass.documentHash)) {
+        throw new Error('Each guest must have their own ID document.');
+      }
+      seenDocuments.add(pass.documentHash);
+
+      return {
+        name: pass.name,
+        age: pass.age,
+        sex: pass.sex,
+        idType: pass.idType,
+        // The pass is only ever issued for a document the issuing authority
+        // confirmed, so there is no other standing a stored guest can have.
+        status: 'Verified',
+        documentHash: pass.documentHash,
+        documentUrl: `/api/documents/${pass.documentId}`,
+        verificationDetails: {
+          extractedName: (pass.name || '').substring(0, 50),
+          verificationTime: new Date(),
+          remarks: pass.remarks,
+          verificationLevel: 'government',
+          governmentVerified: true
+        }
+      };
+    });
   }
 }
 

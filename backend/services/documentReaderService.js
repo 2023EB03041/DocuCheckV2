@@ -138,9 +138,9 @@ const titleCase = (value) => {
 };
 
 /**
- * Sends the image upstream and returns the parsed document fields. The two
- * results below summarise these, and carry the document itself so the
- * verification layer can reach the number and printed date of birth.
+ * Sends the image upstream and returns the parsed document fields. The result
+ * below summarises these, and carries the document itself so the verification
+ * layer can reach the number and printed date of birth.
  */
 const readDocumentFields = async (imageBuffer) => {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
@@ -176,6 +176,15 @@ const readDocumentFields = async (imageBuffer) => {
   };
 };
 
+// Why a card could not be read. The caller needs the difference: a card we
+// could not reach the reader for is worth trying again with, a card we read and
+// could not make sense of is not.
+export const READING = {
+  UNREADABLE: 'unreadable',
+  NOT_AN_ID: 'not-an-id',
+  READER_UNAVAILABLE: 'reader-unavailable'
+};
+
 export const extractDocumentDetails = async (imageBuffer) => {
   try {
     const document = await readDocumentFields(imageBuffer);
@@ -183,10 +192,8 @@ export const extractDocumentDetails = async (imageBuffer) => {
     if (!document.isIdDocument) {
       return {
         success: false,
-        extractedName: '',
-        extractedAge: null,
-        extractedSex: '',
-        error: 'Invalid Document'
+        reason: READING.NOT_AN_ID,
+        error: 'This does not look like a government-issued ID. Please upload a clear photo of your Aadhaar or PAN card.'
       };
     }
 
@@ -200,9 +207,7 @@ export const extractDocumentDetails = async (imageBuffer) => {
     if (!nameReadable || !ageReadable) {
       return {
         success: false,
-        extractedName: '',
-        extractedAge: null,
-        extractedSex: '',
+        reason: READING.UNREADABLE,
         error: 'We could not clearly read the details on this ID. Please upload a sharper, better-quality photo — good lighting, no blur, and all text clearly visible.'
       };
     }
@@ -217,76 +222,14 @@ export const extractDocumentDetails = async (imageBuffer) => {
       document
     };
   } catch (error) {
-    console.error('Document extraction error:', error.message);
+    // Nothing was learned about the document itself here — the reader could not
+    // be reached, or answered with something unusable. Reported as its own
+    // outcome so a passing outage is never mistaken for a bad ID.
+    console.error('Document reader unavailable:', error.message);
     return {
       success: false,
-      extractedName: '',
-      extractedAge: null,
-      extractedSex: '',
-      error: 'Extraction failed'
-    };
-  }
-};
-
-export const verifyDocument = async (imageBuffer, expectedName) => {
-  try {
-    const document = await readDocumentFields(imageBuffer);
-
-    if (!document.isIdDocument) {
-      return {
-        success: false,
-        extractedName: '',
-        extractedAge: null,
-        extractedSex: '',
-        confidenceScore: 0,
-        remarks: 'Validation Failed: The uploaded image does not appear to be a valid government-issued ID card. Please upload a clear photo of a Passport, Driver\'s License, PAN, or Voter ID.'
-      };
-    }
-
-    const extractedName = document.name;
-    const extractedAge = calculateAge(document.dob);
-    // A PAN card carries no gender, so the same fallback is applied here as on
-    // the extraction path — both report a card the same way.
-    const extractedSex = document.gender || 'Other';
-
-    // Score the booking name against both the extracted name and the full
-    // document text, so a partially readable card still verifies.
-    const haystack = `${extractedName} ${document.rawText}`.toLowerCase();
-    const nameParts = (expectedName || '').toLowerCase().split(' ').filter(part => part.length > 2);
-
-    let matchCount = 0;
-    nameParts.forEach(part => {
-      if (haystack.includes(part)) matchCount++;
-    });
-
-    const confidenceScore = nameParts.length > 0 ? (matchCount / nameParts.length) : 0;
-
-    const firstExtractedWord = extractedName ? extractedName.toLowerCase().split(' ')[0] : '';
-    const isVerified = confidenceScore > 0 ||
-      (!!firstExtractedWord && (expectedName || '').toLowerCase().includes(firstExtractedWord));
-
-    return {
-      success: !!isVerified,
-      extractedName,
-      extractedAge,
-      extractedSex,
-      confidenceScore,
-      remarks: isVerified
-        ? 'Document Verified: Authentic Govt ID recognized and details matched.'
-        : 'Validation Failed: Document appears authentic but the Name does not match the booking details.',
-      // Carried for the verification layer only. Holds the document number, so
-      // it must be stripped before the result is returned over the API.
-      document
-    };
-  } catch (error) {
-    console.error('Document verification error:', error.message);
-    return {
-      success: false,
-      extractedName: '',
-      extractedAge: null,
-      extractedSex: '',
-      confidenceScore: 0,
-      remarks: 'Processing failed: ' + error.message
+      reason: READING.READER_UNAVAILABLE,
+      error: 'We could not read your document just now. Please try uploading it again in a moment.'
     };
   }
 };

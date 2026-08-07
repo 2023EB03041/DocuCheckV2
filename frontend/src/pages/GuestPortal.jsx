@@ -15,20 +15,18 @@ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); retur
 const ymdToDate = (s) => { if (!s) return undefined; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 
 // One line of the upload progress. 'pending' is a step not started, 'active' is
-// the one under way, 'done' passed, and 'warn' finished without confirmation.
+// the one under way, and 'done' passed. There is no half-passed state: a step
+// that does not pass takes the whole document with it.
 const StepIcon = ({ state }) => {
   if (state === 'active') return <Loader2 className="w-4 h-4 text-[#d4af37] animate-spin shrink-0" />;
   if (state === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />;
-  if (state === 'warn') return <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />;
   return <span className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />;
 };
 
 const VerifyStep = ({ state, children }) => (
   <div className="flex items-center gap-2 text-left">
     <StepIcon state={state} />
-    <span className={`text-xs ${
-      state === 'pending' ? 'text-gray-400' : state === 'warn' ? 'text-amber-700' : 'text-gray-700'
-    }`}>{children}</span>
+    <span className={`text-xs ${state === 'pending' ? 'text-gray-400' : 'text-gray-700'}`}>{children}</span>
   </div>
 );
 
@@ -58,9 +56,11 @@ const GuestPortal = ({ session, onSessionExpired }) => {
     checkInDate: '',
     checkOutDate: '',
     guestCount: 2,
+    // Every field here is filled in from a confirmed ID, never typed. The type
+    // is whatever the card turned out to be, not something chosen up front.
     guests: [
-      { name: '', age: '', sex: 'Male', idType: 'Aadhaar Card' },
-      { name: '', age: '', sex: 'Male', idType: 'Aadhaar Card' }
+      { name: '', age: '', sex: '', idType: '' },
+      { name: '', age: '', sex: '', idType: '' }
     ],
     roomType: '',
     pricePerNight: 0,
@@ -69,6 +69,13 @@ const GuestPortal = ({ session, onSessionExpired }) => {
 
   // Verification State (Files array matching guest indices)
   const [files, setFiles] = useState([null, null]);
+  // The server's receipt that this guest's ID was confirmed. A file is only
+  // ever kept alongside one of these, and the booking cannot be made without
+  // one for every guest — so there is no way to reach a stay unverified.
+  const [passes, setPasses] = useState([null, null]);
+  // Why a guest's last upload was turned away, and whether the same card is
+  // worth another go ('retry') or a different document is needed ('replace').
+  const [rejections, setRejections] = useState({});
   const [extracting, setExtracting] = useState({});
   // Per guest view of how far their upload has got: 'reading' while the details
   // are being taken off the card, 'checking' while those details are put to the
@@ -96,26 +103,21 @@ const GuestPortal = ({ session, onSessionExpired }) => {
     const num = parseInt(count);
     let newGuests = [...booking.guests];
     let newFiles = [...files];
+    let newPasses = [...passes];
     if (num > newGuests.length) {
       for (let i = newGuests.length; i < num; i++) {
-        newGuests.push({ name: '', age: '', sex: 'Male', idType: 'Aadhaar Card' });
+        newGuests.push({ name: '', age: '', sex: '', idType: '' });
         newFiles.push(null);
+        newPasses.push(null);
       }
     } else {
       newGuests = newGuests.slice(0, num);
       newFiles = newFiles.slice(0, num);
+      newPasses = newPasses.slice(0, num);
     }
     setBooking({ ...booking, guestCount: num, guests: newGuests });
     setFiles(newFiles);
-  };
-
-  const handleGuestChange = (index, field, value) => {
-    const updatedGuests = [...booking.guests];
-    if (field === 'name') {
-      value = value.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
-    }
-    updatedGuests[index] = { ...updatedGuests[index], [field]: value };
-    setBooking({ ...booking, guests: updatedGuests });
+    setPasses(newPasses);
   };
 
   const handleFileChange = async (index, file) => {
@@ -128,8 +130,17 @@ const GuestPortal = ({ session, onSessionExpired }) => {
       }
     }
 
-    // Safely clear only this guest's file (never leave an unverified file "accepted").
-    const clearFile = () => setFiles(prev => { const c = [...prev]; c[index] = null; return c; });
+    // Safely clear only this guest's file (never leave an unverified file
+    // "accepted"), along with anything read off it and its pass.
+    const clearFile = () => {
+      setFiles(prev => { const c = [...prev]; c[index] = null; return c; });
+      setPasses(prev => { const c = [...prev]; c[index] = null; return c; });
+      setBooking(prev => {
+        const g = [...prev.guests];
+        g[index] = { ...g[index], name: '', age: '', sex: '', idType: '' };
+        return { ...prev, guests: g };
+      });
+    };
 
     setFiles(prev => { const c = [...prev]; c[index] = file; return c; });
 
@@ -154,44 +165,55 @@ const GuestPortal = ({ session, onSessionExpired }) => {
     if (booking.checkOutDate) formData.append('checkOutDate', booking.checkOutDate);
 
     try {
-      const res = await axios.post(`${API_URL}/verify/extract`, formData, {
+      const res = await axios.post(`${API_URL}/verify`, formData, {
         headers: { 'Content-Type': 'multipart/form-data', ...guestAuthHeader() },
         timeout: 120000 // reading the document and checking it can be slow on a cold start
       });
 
-      const { success, extractedName, extractedAge, extractedSex, error, governmentVerified } = res.data;
-      setUploadStage(prev => ({
-        ...prev,
-        [index]: {
-          phase: 'done',
-          read: !!(success && extractedName),
-          verified: governmentVerified === true
-        }
-      }));
-      if (success && extractedName) {
-        setBooking(prev => {
-          const g = [...prev.guests];
-          g[index] = {
-            ...g[index],
-            name: extractedName.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()),
-            ...(extractedAge ? { age: extractedAge } : {}),
-            ...(extractedSex ? { sex: extractedSex } : {}),
-          };
-          return { ...prev, guests: g };
-        });
-      } else {
-        alert(error || "This document does not appear to be a valid ID, or it is too blurry to read. Please upload a clear photo of a valid Govt ID.");
-        clearFile();
+      const { verified, extractedName, extractedAge, extractedSex, idType, documentPass, outcome, message } = res.data;
+
+      // Only a document the issuing authority confirmed is kept. Anything else
+      // is handed back to the guest, whatever the reason — there is no partial
+      // pass and nothing is filled in from a card that did not clear.
+      if (!verified) {
         setUploadStage(prev => { const c = { ...prev }; delete c[index]; return c; });
+        clearFile();
+        setRejections(prev => ({
+          ...prev,
+          [index]: {
+            outcome: outcome || 'replace',
+            message: message || 'We could not confirm this ID. Please upload a different one.'
+          }
+        }));
+        return;
       }
+
+      setUploadStage(prev => ({ ...prev, [index]: { phase: 'done', verified: true } }));
+      setRejections(prev => { const c = { ...prev }; delete c[index]; return c; });
+      setPasses(prev => { const c = [...prev]; c[index] = documentPass; return c; });
+      setBooking(prev => {
+        const g = [...prev.guests];
+        g[index] = {
+          ...g[index],
+          name: extractedName,
+          age: extractedAge,
+          sex: extractedSex || '',
+          idType: idType || ''
+        };
+        return { ...prev, guests: g };
+      });
     } catch (err) {
       // Any failure (timeout, server busy, duplicate, network) must reject the file,
       // never silently keep it. Show a useful message and let the guest retry.
       let msg;
+      let outcome = 'retry';
       if (err.code === 'ECONNABORTED') {
         msg = "Verification timed out — the server may be waking up. Please try uploading again in a moment.";
       } else if (err.response?.data?.message) {
+        // A document already in use is the one case here that a different
+        // document fixes; the rest are worth trying the same card again.
         msg = err.response.data.message;
+        outcome = err.response.status === 400 ? 'replace' : 'retry';
       } else {
         msg = "We couldn't verify this document (the server may be busy). Please try uploading it again.";
       }
@@ -202,7 +224,7 @@ const GuestPortal = ({ session, onSessionExpired }) => {
       if (err.response?.status === 401) {
         handleExpiredSession('Your session has expired. Please sign in again to continue your booking.');
       } else {
-        alert(msg);
+        setRejections(prev => ({ ...prev, [index]: { outcome, message: msg } }));
       }
     } finally {
       clearTimeout(toChecking);
@@ -260,17 +282,18 @@ const GuestPortal = ({ session, onSessionExpired }) => {
     }
     
     booking.guests.forEach((guest, index) => {
-      if (!files[index]) {
-        newErrors[`guest_file_${index}`] = "ID Document upload is mandatory";
+      // The pass is the only thing that counts: it exists only for a document
+      // the issuing authority confirmed, and the details below were filled in
+      // from that same document.
+      if (!passes[index] || !files[index]) {
+        newErrors[`guest_file_${index}`] = "A confirmed ID document is required for this guest";
+        return;
       }
       if (!guest.name || guest.name.trim().length < 2) {
         newErrors[`guest_${index}`] = "Full name could not be extracted";
       }
       if (!guest.age || isNaN(guest.age) || guest.age < 18) {
         newErrors[`guest_age_${index}`] = "Valid age (18+) could not be extracted";
-      }
-      if (!guest.sex) {
-        newErrors[`guest_sex_${index}`] = "Sex could not be extracted";
       }
     });
 
@@ -366,28 +389,20 @@ const GuestPortal = ({ session, onSessionExpired }) => {
 
     setPaymentStatus('processing');
     try {
-      // 1. Create Reservation. The total is not sent — the server prices the
-      // stay from the same rate card the quote above was built from.
-      const res = await axios.post(`${API_URL}/reservations`, booking, { headers: guestAuthHeader() });
-      const newReservation = res.data;
-      
-      // 2. Upload Documents for each guest
-      const uploadPromises = files.map((file, index) => {
-        if (!file) return Promise.resolve(); // Skip if no file uploaded for this guest
-        
-        const formData = new FormData();
-        formData.append('idDocument', file);
-        return axios.post(`${API_URL}/verify/${newReservation.reservationId}/${index}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data', ...guestAuthHeader() }
-        }).catch(err => console.error(`Error uploading for guest ${index}:`, err));
-      });
+      // The documents were confirmed before we got here, so the booking carries
+      // each guest's pass rather than their details. The server records the
+      // stay from those passes — nothing is uploaded or re-checked afterwards,
+      // which is why a confirmation can never come back part-verified.
+      //
+      // The total is not sent either: the server prices the stay from the same
+      // rate card the quote above was built from.
+      const res = await axios.post(`${API_URL}/reservations`, {
+        ...booking,
+        guests: booking.guests.map((guest, index) => ({ ...guest, documentPass: passes[index] }))
+      }, { headers: guestAuthHeader() });
 
-      await Promise.all(uploadPromises);
-      
-      // Fetch updated reservation to get individual guest statuses
-      const finalRes = await axios.get(`${API_URL}/reservations/${newReservation.reservationId}`);
-      setReservation(finalRes.data);
-      
+      setReservation(res.data);
+
       setPaymentStatus('success');
       setTimeout(() => {
         setPaymentStatus('idle');
@@ -401,7 +416,17 @@ const GuestPortal = ({ session, onSessionExpired }) => {
         handleExpiredSession('Your session has expired. Please sign in again to complete the booking.');
         return;
       }
-      alert(error.response?.data?.message || 'Payment processing failed. Please try again.');
+
+      const message = error.response?.data?.message || 'Payment processing failed. Please try again.';
+      alert(message);
+
+      // The server refuses a booking whose guests are not all confirmed — which
+      // here means a confirmation has aged out while the guest sat on the
+      // payment screen. Send them back to the IDs rather than leaving them
+      // pressing pay against a booking that cannot be made.
+      if (/ID document|confirmed ID|own ID/i.test(message)) {
+        setStep(3);
+      }
     }
   };
 
@@ -579,7 +604,7 @@ const GuestPortal = ({ session, onSessionExpired }) => {
               <h3 className="text-2xl font-bold text-[#1a365d]">Pre-Arrival Verification</h3>
             </div>
             <p className="text-gray-600 mb-8 text-sm">
-              Uploading government-issued IDs for all guests is mandatory. The details on each ID are read and confirmed against government records to fill in your booking.
+              Every guest needs an Aadhaar or PAN card. Each one is read and then confirmed against the issuing authority's record, and only a card that is confirmed can be used to book — so if an ID is turned away here, upload a clearer photo of it or a different document.
             </p>
 
             <div className="space-y-12">
@@ -625,19 +650,8 @@ const GuestPortal = ({ session, onSessionExpired }) => {
 
                     <div className="space-y-2 md:col-span-2">
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">ID Document Type</label>
-                      <div className="relative">
-                        <select className="w-full px-4 py-3 bg-white border border-gray-300 rounded-sm outline-none focus:border-[#d4af37] appearance-none"
-                          value={guest.idType} onChange={e => handleGuestChange(index, 'idType', e.target.value)}>
-                          <option value="Aadhaar Card">Aadhaar Card</option>
-                          <option value="Driving License">Driving License</option>
-                          <option value="PAN Card">PAN Card</option>
-                        </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                          </svg>
-                        </div>
-                      </div>
+                      <input type="text" readOnly className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-sm outline-none text-gray-600 cursor-not-allowed"
+                        value={guest.idType || ''} placeholder="Detected from your ID" />
                     </div>
                   </div>
                   
@@ -669,25 +683,36 @@ const GuestPortal = ({ session, onSessionExpired }) => {
                           </div>
                         </div>
                       ) : files[index] ? (
+                        // A file is only ever held here once the check has
+                        // passed, so there is no half-verified state to show.
                         <div className="flex flex-col items-center">
                           <p className="font-medium text-gray-900 text-sm mb-3">{files[index].name}</p>
                           <div className="w-full max-w-[17rem] space-y-2">
                             <VerifyStep state="done">Details read and filled in above</VerifyStep>
-                            <VerifyStep state={uploadStage[index]?.verified ? 'done' : 'warn'}>
-                              {uploadStage[index]?.verified
-                                ? 'Confirmed against government records'
-                                : 'Read from the document only'}
-                            </VerifyStep>
+                            <VerifyStep state="done">Confirmed against government records</VerifyStep>
                           </div>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
                           <UploadCloud className="w-8 h-8 text-gray-400 mb-2 group-hover:text-[#d4af37]" />
-                          <p className="text-sm font-medium text-gray-700">Upload {guest.idType} image to Extract Details</p>
+                          <p className="text-sm font-medium text-gray-700">Upload an Aadhaar or PAN card to verify this guest</p>
                           <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 5MB</p>
                         </div>
                       )}
                     </div>
+                    {rejections[index] && (
+                      <div className="mt-3 p-3 rounded-md bg-red-50 border border-red-100 flex items-start gap-2 text-left">
+                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-xs text-red-700 leading-relaxed">{rejections[index].message}</p>
+                          <p className="text-[11px] text-red-500 mt-1 font-bold uppercase tracking-wider">
+                            {rejections[index].outcome === 'retry'
+                              ? 'Upload the same card again'
+                              : 'Upload a different document'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {errors[`guest_file_${index}`] && <p className="text-red-500 text-xs mt-2 text-center font-bold">{errors[`guest_file_${index}`]}</p>}
                   </div>
                 </div>
@@ -888,16 +913,14 @@ const GuestPortal = ({ session, onSessionExpired }) => {
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Guest Verification Status</h3>
             <div className="space-y-4">
               {reservation.guests.map((guest, idx) => (
+                // Every guest on a confirmed stay cleared the government check
+                // before the booking was made, so there is only one thing to say.
                 <div key={idx} className="flex items-start gap-4 p-4 rounded-md border bg-white shadow-sm">
-                  <ShieldCheck className={`w-6 h-6 mt-1 ${guest.status === 'Verified' ? 'text-green-500' : guest.status === 'Failed' ? 'text-red-500' : 'text-amber-500'}`} />
+                  <ShieldCheck className="w-6 h-6 mt-1 text-green-500" />
                   <div>
                     <p className="font-bold text-gray-900">{guest.name}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {guest.status === 'Verified' 
-                        ? `ID Verified (${guest.idType}). Cleared for mobile key.`
-                        : guest.status === 'Failed'
-                        ? 'Verification failed or unreadable. See front desk.'
-                        : 'No ID uploaded. Please see front desk upon arrival.'}
+                      {guest.idType} confirmed against government records. Cleared for mobile key.
                     </p>
                   </div>
                 </div>
