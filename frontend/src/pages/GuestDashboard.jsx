@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Loader2, Download, CalendarCheck, CalendarClock, ShieldCheck, ChevronDown, ChevronUp,
-  Users, BedDouble, AlertCircle, Plus
+  Users, BedDouble, AlertCircle, Plus, LogOut
 } from 'lucide-react';
 import axios from 'axios';
 import { guestAuthHeader } from '../utils/guestSession';
@@ -175,12 +175,20 @@ const GuestDashboard = ({ session, onSignOut }) => {
           <h1 className="text-4xl font-serif text-[#1a365d]">Your Reservations</h1>
           <p className="text-gray-500 text-sm mt-2">Signed in as <span className="font-medium text-gray-700">{session.email}</span></p>
         </div>
-        <Link
-          to="/book"
-          className="self-start sm:self-auto px-6 py-3 bg-[#1a365d] text-white font-bold tracking-widest uppercase text-xs hover:bg-[#2a4365] transition-colors flex items-center gap-2 rounded-sm"
-        >
-          <Plus className="w-4 h-4" /> Book a stay
-        </Link>
+        <div className="self-start sm:self-auto flex flex-wrap items-center gap-3">
+          <Link
+            to="/book"
+            className="px-6 py-3 bg-[#1a365d] text-white font-bold tracking-widest uppercase text-xs hover:bg-[#2a4365] transition-colors flex items-center gap-2 rounded-sm"
+          >
+            <Plus className="w-4 h-4" /> Book a stay
+          </Link>
+          <button
+            onClick={() => { onSignOut(); navigate('/'); }}
+            className="px-6 py-3 border border-gray-300 text-gray-600 font-bold tracking-widest uppercase text-xs hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 rounded-sm"
+          >
+            <LogOut className="w-4 h-4" /> Sign out
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-10">
@@ -231,15 +239,6 @@ const GuestDashboard = ({ session, onSignOut }) => {
           ))}
         </div>
       )}
-
-      <div className="mt-12 text-center">
-        <button
-          onClick={() => { onSignOut(); navigate('/'); }}
-          className="text-xs font-bold uppercase tracking-wider text-gray-500 hover:text-red-600 transition-colors"
-        >
-          Sign out
-        </button>
-      </div>
     </div>
   );
 };
