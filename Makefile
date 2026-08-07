@@ -7,11 +7,11 @@
 .PHONY: start stop clean
 
 # Build images and start all services in the background.
-# Override host ports if they conflict, e.g. on macOS:
-#   FRONTEND_PORT=9090 BACKEND_PORT=5002 make start
+# Override either host port if it is already taken on your machine:
+#   FRONTEND_PORT=9091 BACKEND_PORT=5002 make start
 start:
 	docker-compose up -d --build
-	@echo "Frontend: http://localhost:$(or $(FRONTEND_PORT),8080)   Backend: http://localhost:$(or $(BACKEND_PORT),5001)"
+	@echo "Frontend: http://localhost:$(or $(FRONTEND_PORT),9090)   Backend: http://localhost:$(or $(BACKEND_PORT),5001)"
 
 # Stop and remove the running containers.
 stop:

@@ -15,9 +15,10 @@ services:
   frontend:
     build:
       context: ./frontend
-    # Host port is configurable in case 8080 is already in use.
+    # Host port is configurable. The default steers clear of 8080, which is
+    # commonly taken by an already-running web console or admin tool.
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-9090}:80"
     depends_on:
       - backend
     restart: always
