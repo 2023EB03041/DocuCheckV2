@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { UserCircle2 } from 'lucide-react';
-import GuestPortal from './pages/GuestPortal';
+import BookingWizard from './pages/BookingWizard';
 import GuestLogin from './pages/GuestLogin';
 import GuestDashboard from './pages/GuestDashboard';
 import StaffDashboard from './pages/StaffDashboard';
@@ -263,7 +263,7 @@ function App() {
           } />
           <Route path="/book" element={
             <RequireGuest session={session}>
-              <GuestPortal session={session} onSessionExpired={signOut} />
+              <BookingWizard session={session} onSessionExpired={signOut} />
             </RequireGuest>
           } />
           <Route path="/staff" element={<StaffDashboard />} />

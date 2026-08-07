@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import emailOtpService, { normalizeEmail } from './emailOtpService.js';
+import signInCodeService, { normalizeEmail } from './signInCodeService.js';
 
 // A guest account is nothing more than a confirmed email address. There is no
 // password to set, forget or leak: the guest proves the address by answering a
@@ -18,7 +18,7 @@ class GuestAuthService {
    * simply has no stays to show yet.
    */
   async requestLoginCode(email) {
-    return await emailOtpService.requestCode(email);
+    return await signInCodeService.requestCode(email);
   }
 
   /**
@@ -27,7 +27,7 @@ class GuestAuthService {
    * a session for another.
    */
   async confirmLoginCode(methodId, code) {
-    const confirmed = await emailOtpService.confirmCode(methodId, code);
+    const confirmed = await signInCodeService.confirmCode(methodId, code);
 
     return {
       email: confirmed.email,

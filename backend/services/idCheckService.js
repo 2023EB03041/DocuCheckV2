@@ -62,7 +62,7 @@ const rejection = (verification) => {
   };
 };
 
-class VerifyService {
+class IdCheckService {
   /**
    * The one place a document is checked. Reads the card, puts it to the issuing
    * authority, and on success stores it and issues the pass the booking will
@@ -154,4 +154,4 @@ class VerifyService {
   }
 }
 
-export default new VerifyService();
+export default new IdCheckService();
