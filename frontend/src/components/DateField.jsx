@@ -27,9 +27,10 @@ export default function DateField({ label, icon: Icon, value, onChange, minDate 
 
   const [month, setMonth] = useState(() => firstOfMonth(selected || minDate || new Date()));
 
-  useEffect(() => {
-    if (open) setMonth(firstOfMonth(selected || minDate || new Date()));
-  }, [open]); 
+  const toggleOpen = () => {
+    if (!open) setMonth(firstOfMonth(selected || minDate || new Date()));
+    setOpen((o) => !o);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +80,7 @@ export default function DateField({ label, icon: Icon, value, onChange, minDate 
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleOpen}
         className="w-full text-left pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-sm focus:ring-2 focus:ring-[#d4af37] focus:border-transparent outline-none transition-all"
       >
         {Icon && <Icon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />}
