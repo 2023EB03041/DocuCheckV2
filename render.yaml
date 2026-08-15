@@ -1,6 +1,5 @@
-# Render blueprint — native Node (no container) backend for DocuCheck.
-# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo/prod branch.
-# Set MONGO_URI and JWT_SECRET in the dashboard (they are marked sync:false).
+# Render blueprint — backend for DocuCheck.
+
 services:
   - type: web
     name: docucheck-backend
@@ -18,29 +17,26 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      # Document reading. The key is set in the dashboard, never in the repo.
+
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
-      # Record verification. Test credentials only — a live key is refused.
+
       - key: SANDBOX_API_KEY
         sync: false
       - key: SANDBOX_API_SECRET
         sync: false
-      # Password the published sample records are issued with, so a check needs
-      # nothing from the guest.
+
       - key: AADHAAR_DEV_OTP
         value: "121212"
-      # Stytch, which emails and checks the guest's verification code.
-      # Credentials are set in the dashboard, never in the repo.
+
       - key: STYTCH_PROJECT_ID
         sync: false
       - key: STYTCH_SECRET
         sync: false
       - key: STYTCH_ENV
         value: test
-      # Sites a browser may call this API from. Comma separated; add preview
-      # deployment URLs here if they need to reach the API.
+
       - key: CORS_ORIGINS
         value: https://docucheckv2.pages.dev

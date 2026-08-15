@@ -1,133 +1,130 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import reservationRoutes from './routes/reservationRoutes.js';
-import verifyRoutes from './routes/verifyRoutes.js';
-import authRoutes from './routes/authRoutes.js';
-import documentRoutes from './routes/documentRoutes.js';
-import guestRoutes from './routes/guestRoutes.js';
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
+import reservationRoutes from "./routes/reservationRoutes.js";
+import verifyRoutes from "./routes/verifyRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import documentRoutes from "./routes/documentRoutes.js";
+import guestRoutes from "./routes/guestRoutes.js";
 
 dotenv.config();
 
 if (!process.env.JWT_SECRET) {
-  console.error('FATAL ERROR: JWT_SECRET is not defined. Set it in the environment before starting.');
-  process.exit(1);
+	console.error(
+		"FATAL ERROR: JWT_SECRET is not defined. Set it in the environment before starting.",
+	);
+	process.exit(1);
 }
 
 const app = express();
 
-// Sites a browser may call this API from. The hosted front end and the local
-// dev server are allowed by default so the app works without extra setup;
-// CORS_ORIGINS replaces the list with its own comma separated entries.
 const DEFAULT_ORIGINS = [
-  'https://docucheckv2.pages.dev',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
+	"https://docucheckv2.pages.dev",
+	"http://localhost:5173",
+	"http://127.0.0.1:5173",
 ];
 
-const allowedOrigins = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map(entry => entry.trim())
-  .filter(Boolean);
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+	.split(",")
+	.map((entry) => entry.trim())
+	.filter(Boolean);
 
-const originAllowList = allowedOrigins.length ? allowedOrigins : DEFAULT_ORIGINS;
+const originAllowList = allowedOrigins.length
+	? allowedOrigins
+	: DEFAULT_ORIGINS;
 
-// Middleware
-app.use(cors({
-  // A request with no origin is not coming from a browser page — the platform
-  // health check and server to server calls — so it is left alone. Anything
-  // else is answered without the header a browser needs, which blocks it.
-  origin: (origin, callback) => callback(null, !origin || originAllowList.includes(origin)),
-  credentials: true
-}));
+app.use(
+	cors({
+		origin: (origin, callback) =>
+			callback(null, !origin || originAllowList.includes(origin)),
+		credentials: true,
+	}),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Lightweight health check (public, no DB) for the hosting platform.
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Routes
-app.use('/api/reservations', reservationRoutes);
-app.use('/api/verify', verifyRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/guest', guestRoutes);
+app.use("/api/reservations", reservationRoutes);
+app.use("/api/verify", verifyRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/documents", documentRoutes);
+app.use("/api/guest", guestRoutes);
 
-import Room from './models/Room.js';
-import User from './models/User.js';
-import bcrypt from 'bcryptjs';
-import { buildRoomInventory } from './config/roomPricing.js';
+import Room from "./models/Room.js";
+import User from "./models/User.js";
+import bcrypt from "bcryptjs";
+import { buildRoomInventory } from "./config/roomPricing.js";
 
-// Database Connection
 const PORT = process.env.PORT || 5000;
 
 const connectDB = async () => {
-  try {
-    let uri = process.env.MONGO_URI;
+	try {
+		let uri = process.env.MONGO_URI;
 
-    if (!uri) {
-      console.error('FATAL ERROR: MONGO_URI is not defined in .env file.');
-      process.exit(1);
-    }
+		if (!uri) {
+			console.error("FATAL ERROR: MONGO_URI is not defined in .env file.");
+			process.exit(1);
+		}
 
-    await mongoose.connect(uri);
-    console.log('Connected to MongoDB Atlas');
-    
-    // Bring the room inventory into line with the rate card, in both directions.
-    // The tier and its rate are set on every run, not only on insert, so rooms
-    // seeded against an older card are corrected rather than left stale.
-    const desiredRooms = buildRoomInventory();
+		await mongoose.connect(uri);
+		console.log("Connected to MongoDB Atlas");
 
-    await Room.bulkWrite(desiredRooms.map((r) => ({
-      updateOne: {
-        filter: { roomNumber: r.roomNumber },
-        update: {
-          $set: { type: r.type, pricePerNight: r.pricePerNight },
-          $setOnInsert: { status: 'Available' }
-        },
-        upsert: true,
-      },
-    })));
+		const desiredRooms = buildRoomInventory();
 
-    // A tier that has shrunk leaves rooms behind, and an inventory that only
-    // ever grows would keep selling them. Those are withdrawn — but never one
-    // that is holding a stay, since a guest booked into it has to keep it.
-    const retired = await Room.deleteMany({
-      roomNumber: { $nin: desiredRooms.map(r => r.roomNumber) },
-      currentReservation: { $in: [null, undefined] }
-    });
+		await Room.bulkWrite(
+			desiredRooms.map((r) => ({
+				updateOne: {
+					filter: { roomNumber: r.roomNumber },
+					update: {
+						$set: { type: r.type, pricePerNight: r.pricePerNight },
+						$setOnInsert: { status: "Available" },
+					},
+					upsert: true,
+				},
+			})),
+		);
 
-    const stranded = await Room.countDocuments({
-      roomNumber: { $nin: desiredRooms.map(r => r.roomNumber) }
-    });
+		const retired = await Room.deleteMany({
+			roomNumber: { $nin: desiredRooms.map((r) => r.roomNumber) },
+			currentReservation: { $in: [null, undefined] },
+		});
 
-    console.log(`Room inventory ensured: ${desiredRooms.length} rooms.`
-      + (retired.deletedCount ? ` Withdrew ${retired.deletedCount} no longer in the rate card.` : '')
-      + (stranded ? ` ${stranded} kept until their current stay ends.` : ''));
+		const stranded = await Room.countDocuments({
+			roomNumber: { $nin: desiredRooms.map((r) => r.roomNumber) },
+		});
 
-    // Seed default Superuser for PMS Demo
-    const userCount = await User.countDocuments();
-    if (userCount === 0) {
-      console.log('Seeding default Superuser...');
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash('password123', salt);
-      await User.create({
-        name: 'System Admin',
-        email: 'admin@lumina.com',
-        phone: '9999999999',
-        username: 'admin',
-        password: hashedPassword,
-        role: 'Superuser'
-      });
-    }
-    
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('Error connecting to MongoDB:', error.message);
-  }
+		console.log(
+			`Room inventory ensured: ${desiredRooms.length} rooms.` +
+				(retired.deletedCount
+					? ` Withdrew ${retired.deletedCount} no longer in the rate card.`
+					: "") +
+				(stranded ? ` ${stranded} kept until their current stay ends.` : ""),
+		);
+
+		// Seed default Superuser for PMS Demo
+		const userCount = await User.countDocuments();
+		if (userCount === 0) {
+			console.log("Seeding default Superuser...");
+			const salt = await bcrypt.genSalt(10);
+			const hashedPassword = await bcrypt.hash("password123", salt);
+			await User.create({
+				name: "System Admin",
+				email: "admin@lumina.com",
+				phone: "9999999999",
+				username: "admin",
+				password: hashedPassword,
+				role: "Superuser",
+			});
+		}
+
+		app.listen(PORT, () => {
+			console.log(`Server running on port ${PORT}`);
+		});
+	} catch (error) {
+		console.error("Error connecting to MongoDB:", error.message);
+	}
 };
 
 connectDB();

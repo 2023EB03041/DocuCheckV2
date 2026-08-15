@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
 
-// Parse a 'YYYY-MM-DD' string into a local Date (avoids UTC timezone shift).
+// Parse a 'YYYY-MM-DD' string into a local Date.
 const parseYMD = (str) => {
   if (!str) return undefined;
   const [y, m, d] = str.split('-').map(Number);
@@ -16,17 +16,6 @@ const formatYMD = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-$
 
 const firstOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
-/**
- * A date input backed by react-day-picker.
- * Scroll the mouse wheel over the calendar to move between months.
- *
- * Props:
- *   label    – field label text
- *   icon     – lucide icon component rendered inside the field
- *   value    – selected date as 'YYYY-MM-DD' (or '')
- *   onChange – called with the new 'YYYY-MM-DD' string
- *   minDate  – earliest selectable Date (days before it are disabled)
- */
 export default function DateField({ label, icon: Icon, value, onChange, minDate }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -38,12 +27,10 @@ export default function DateField({ label, icon: Icon, value, onChange, minDate 
 
   const [month, setMonth] = useState(() => firstOfMonth(selected || minDate || new Date()));
 
-  // When opening, jump the view to the selected date (or the earliest allowed month).
   useEffect(() => {
     if (open) setMonth(firstOfMonth(selected || minDate || new Date()));
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open]); 
 
-  // Close on outside click or Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e) => {
@@ -60,8 +47,7 @@ export default function DateField({ label, icon: Icon, value, onChange, minDate 
     };
   }, [open]);
 
-  // Mouse-wheel over the calendar changes the month (native listener so we can
-  // preventDefault the page scroll; React's onWheel is passive).
+
   useEffect(() => {
     if (!open) return;
     const el = popoverRef.current;
@@ -107,7 +93,6 @@ export default function DateField({ label, icon: Icon, value, onChange, minDate 
           aria-label={label}
           className="absolute z-50 mt-2 bg-white border border-gray-200 rounded-md shadow-xl p-2"
           style={{
-            // Match the app's navy/gold palette.
             '--rdp-accent-color': '#1a365d',
             '--rdp-today-color': '#d4af37',
           }}

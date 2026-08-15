@@ -1,66 +1,62 @@
-// The one place a room tier's nightly rate is written down. The seed, the
-// booking total and anything else that needs a rate reads it from here, so a
-// tier cannot end up priced one way in the database and another way in a total.
-//
-// Rates step up by a fixed amount from the entry tier to the top one.
 const BASE_RATE = 5000;
 const RATE_STEP = 5000;
 
-// Twenty rooms, thinning by two a floor as the tier rises — the mirror of the
-// rate, which climbs by a fixed step over the same four tiers.
+// Twenty rooms
 const ROOM_TIERS = [
-  { type: 'Standard',           floor: 1, roomCount: 8 },
-  { type: 'Deluxe',             floor: 2, roomCount: 6 },
-  { type: 'Ocean View',         floor: 3, roomCount: 4 },
-  { type: 'Presidential Suite', floor: 4, roomCount: 2 }
-].map((tier, index) => ({ ...tier, pricePerNight: BASE_RATE + index * RATE_STEP }));
+	{ type: "Standard", floor: 1, roomCount: 8 },
+	{ type: "Deluxe", floor: 2, roomCount: 6 },
+	{ type: "Ocean View", floor: 3, roomCount: 4 },
+	{ type: "Presidential Suite", floor: 4, roomCount: 2 },
+].map((tier, index) => ({
+	...tier,
+	pricePerNight: BASE_RATE + index * RATE_STEP,
+}));
 
-// Tax added on top of the room charge, applied identically wherever a total is
-// worked out.
+// Tax added on top of the room charge
 export const GST_RATE = 0.18;
 
-// Two guests share a room, so this is how many rooms a party needs.
-export const roomsForGuests = (guestCount) => Math.max(1, Math.ceil((Number(guestCount) || 1) / 2));
+// Two guests share a room
+export const roomsForGuests = (guestCount) =>
+	Math.max(1, Math.ceil((Number(guestCount) || 1) / 2));
 
 const priceForType = (type) =>
-  ROOM_TIERS.find(tier => tier.type === type)?.pricePerNight ?? null;
+	ROOM_TIERS.find((tier) => tier.type === type)?.pricePerNight ?? null;
 
-// Whole nights between the two dates. A stay is charged for at least one night,
-// which also covers a same-day booking.
 export const nightsBetween = (checkInDate, checkOutDate) => {
-  const start = new Date(checkInDate);
-  const end = new Date(checkOutDate);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
-  return Math.max(1, Math.round((end - start) / 86400000));
+	const start = new Date(checkInDate);
+	const end = new Date(checkOutDate);
+	if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+	return Math.max(1, Math.round((end - start) / 86400000));
 };
 
-/**
- * Works out what a stay costs. Every caller that shows or stores a price goes
- * through this, so the room list, the checkout summary, the stored booking and
- * the confirmation PDF can never disagree.
- */
-export const quoteStay = ({ roomType, guestCount, checkInDate, checkOutDate }) => {
-  const pricePerNight = priceForType(roomType);
-  if (pricePerNight === null) {
-    throw new Error(`Unknown room type: ${roomType}`);
-  }
+// Works out what a stay costs
+export const quoteStay = ({
+	roomType,
+	guestCount,
+	checkInDate,
+	checkOutDate,
+}) => {
+	const pricePerNight = priceForType(roomType);
+	if (pricePerNight === null) {
+		throw new Error(`Unknown room type: ${roomType}`);
+	}
 
-  const rooms = roomsForGuests(guestCount);
-  const nights = nightsBetween(checkInDate, checkOutDate);
-  const subtotal = pricePerNight * rooms * nights;
-  const gst = Math.round(subtotal * GST_RATE);
+	const rooms = roomsForGuests(guestCount);
+	const nights = nightsBetween(checkInDate, checkOutDate);
+	const subtotal = pricePerNight * rooms * nights;
+	const gst = Math.round(subtotal * GST_RATE);
 
-  return { pricePerNight, rooms, nights, subtotal, gst, total: subtotal + gst };
+	return { pricePerNight, rooms, nights, subtotal, gst, total: subtotal + gst };
 };
 
-// The rooms this property sells, numbered by floor: 101.., 201.., and so on.
+// The rooms this property sells
 export const buildRoomInventory = () => {
-  const pad = (n) => String(n).padStart(2, '0');
-  return ROOM_TIERS.flatMap(tier =>
-    Array.from({ length: tier.roomCount }, (_, i) => ({
-      roomNumber: `${tier.floor}${pad(i + 1)}`,
-      type: tier.type,
-      pricePerNight: tier.pricePerNight
-    }))
-  );
+	const pad = (n) => String(n).padStart(2, "0");
+	return ROOM_TIERS.flatMap((tier) =>
+		Array.from({ length: tier.roomCount }, (_, i) => ({
+			roomNumber: `${tier.floor}${pad(i + 1)}`,
+			type: tier.type,
+			pricePerNight: tier.pricePerNight,
+		})),
+	);
 };
