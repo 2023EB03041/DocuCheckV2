@@ -14,13 +14,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 const formatDate = (value) =>
   new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
-// A guest only reaches a stay with their ID already confirmed, so there is one
-// standing to show.
 const StatusPill = ({ status }) => (
   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{status}</span>
 );
 
-// One stay, collapsed to its essentials until opened.
 const StayCard = ({ reservation, tone }) => {
   const [expanded, setExpanded] = useState(false);
   const nights = reservation.nights || nightsBetween(reservation.checkInDate, reservation.checkOutDate);
@@ -145,11 +142,9 @@ const GuestDashboard = ({ session, onSignOut }) => {
       try {
         const res = await axios.get(`${API_URL}/guest/reservations`, { headers: guestAuthHeader() });
         setStays(res.data);
-        // Land on whichever list actually has something in it.
         if (res.data.upcoming.length === 0 && res.data.past.length > 0) setTab('past');
       } catch (err) {
         if (err.response?.status === 401) {
-          // The session lapsed while the page was away; sign back in.
           onSignOut();
           navigate('/login', { replace: true, state: { from: '/account' } });
           return;

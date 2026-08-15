@@ -19,11 +19,9 @@ const StaffLogin = ({ onLogin }) => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { username, password, loginType });
       
-      // Save token and user details to localStorage
       localStorage.setItem('staffToken', res.data.token);
       localStorage.setItem('staffUser', JSON.stringify(res.data.user));
       
-      // Inform parent component
       onLogin(res.data.user);
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');

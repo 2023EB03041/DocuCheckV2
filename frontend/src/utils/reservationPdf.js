@@ -1,17 +1,11 @@
 import { jsPDF } from 'jspdf';
 import { GST_RATE, nightsBetween, roomsForGuests } from './pricing';
 
-// The confirmation document. Built in one place so the copy a guest downloads
-// straight after booking and the copy they download from their dashboard years
-// later are the same document, priced the same way.
-
 const NAVY = [26, 54, 93];
 const GOLD = [212, 175, 55];
 
 const inr = (amount) => `INR ${(Number(amount) || 0).toLocaleString('en-IN')}`;
 
-// A stay booked before the rate and night count were stored still has to print
-// a correct breakdown, so both are derived from the stay itself when missing.
 const chargesFor = (reservation) => {
   const rooms = (reservation.roomNumbers || []).length || roomsForGuests(reservation.guests?.length);
   const nights = reservation.nights || nightsBetween(reservation.checkInDate, reservation.checkOutDate);

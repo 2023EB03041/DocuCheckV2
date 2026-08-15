@@ -13,9 +13,6 @@ class RoomRepository {
     return await Room.find({ currentReservation: { $ne: null } }).populate('currentReservation');
   }
 
-  // Detach the stay from the rooms it held. Rooms that were merely occupied go
-  // back into the sellable pool; Cleaning/Maintenance rooms keep their status
-  // so housekeeping is not silently overridden.
   async releaseRooms(roomIds) {
     await Room.updateMany(
       { _id: { $in: roomIds }, status: 'Occupied' },

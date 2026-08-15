@@ -1,6 +1,3 @@
-// The signed-in guest, as the browser remembers them. A session is just a token
-// and the address it was issued for; there is no password anywhere in the flow.
-
 const TOKEN_KEY = 'guestToken';
 const EMAIL_KEY = 'guestEmail';
 
@@ -20,7 +17,6 @@ export const clearGuestSession = () => {
   localStorage.removeItem(EMAIL_KEY);
 };
 
-// Header that identifies the guest on their own endpoints.
 export const guestAuthHeader = () => {
   const session = getGuestSession();
   return session ? { Authorization: `Bearer ${session.token}` } : {};

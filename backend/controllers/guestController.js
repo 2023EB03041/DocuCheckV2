@@ -7,16 +7,12 @@ class GuestController {
       const result = await guestAuthService.requestLoginCode(req.body?.email);
       res.json({
         message: `A sign-in code has been sent to ${result.email}. It can take a moment to arrive — check your spam folder if it does not.`,
-        // Names the message the code belongs to; the page sends it back with
-        // the code so the two can be matched without any state held here.
         methodId: result.methodId,
         expiresInSeconds: result.expiresInSeconds,
         resendInSeconds: result.resendInSeconds
       });
     } catch (error) {
       if (error.status) {
-        // A cooldown carries the wait with it so the page can count it down
-        // instead of guessing when the next code may be asked for.
         return res.status(error.status).json({
           message: error.message,
           ...(error.retryAfterSeconds ? { resendInSeconds: error.retryAfterSeconds } : {})
@@ -45,7 +41,7 @@ class GuestController {
     }
   }
 
-  // Lets the page check a stored session is still good before it trusts it.
+  // the page checks a stored session is still good before it trusts it.
   async getSession(req, res) {
     res.json({ email: req.guestEmail });
   }

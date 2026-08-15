@@ -1,18 +1,10 @@
-// This integration talks only to the test environment. It answers from a fixed
-// set of published sample records, so no real person's details are ever sent
-// and no check is ever billed.
 const TEST_BASE_URL = 'https://test-api.sandbox.co.in';
 
-// The test environment replays saved examples and only answers a request whose
-// body matches one exactly, so the stated purpose has to be the wording the
-// example for that endpoint uses. Each endpoint was written up separately
-// upstream, so the wording differs between them.
 const TEST_REASONS = {
   aadhaar: 'For KYC',
   pan: 'For onboarding customers'
 };
 
-// An upstream call that stops responding must not hold the upload open.
 const REQUEST_TIMEOUT_MS = 30000;
 
 // Verification levels recorded against a guest.
@@ -26,11 +18,6 @@ const getBaseUrl = () => TEST_BASE_URL;
 
 const getVerificationReason = (endpoint) => TEST_REASONS[endpoint];
 
-/**
- * Only test credentials are accepted. A live key would be charged per check and
- * would send a real person's details upstream, so it is refused outright rather
- * than used by accident.
- */
 const isConfigured = () => {
   const key = process.env.SANDBOX_API_KEY;
   const secret = process.env.SANDBOX_API_SECRET;
@@ -76,11 +63,7 @@ const getAccessToken = async () => {
   return token;
 };
 
-/**
- * Normalises a printed date of birth to the DD/MM/YYYY the upstream API expects.
- * Returns an empty string when only a year of birth was printed, since a partial
- * date cannot be checked.
- */
+// Normalises a printed date of birth to the DD/MM/YYYY the upstream API expects.
 const formatDateOfBirth = (dob) => {
   const match = (dob || '').trim().match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
   if (!match) return '';
@@ -100,11 +83,7 @@ const normalizeAadhaar = (idNumber) => {
   return /^[0-9]{12}$/.test(digits) ? digits : '';
 };
 
-/**
- * Compares a name held by an authority with the one printed on the document.
- * Matching on parts keeps middle names and initials from failing a genuine
- * card, while still catching a different person entirely.
- */
+// Compares a name held by an authority with the one printed on the document.
 const namesAgree = (officialName, documentName) => {
   const parts = (documentName || '').toLowerCase().split(/\s+/).filter(p => p.length > 2);
   if (!parts.length) return false;
@@ -138,13 +117,7 @@ const postJson = async (path, body) => {
   return { ok: response.ok, status: response.status, payload: await response.json().catch(() => ({})) };
 };
 
-/**
- * Checks an Aadhaar against the UIDAI record. UIDAI only releases details
- * against a one time password, so the server can complete this on its own
- * only where that password is a known fixed value, which is the case in the
- * test environment. Without one the document is reported as unconfirmed
- * rather than being waved through.
- */
+// Checks an Aadhaar against the UIDAI record.
 const verifyAadhaar = async ({ idNumber, name, dob }) => {
   const aadhaar = normalizeAadhaar(idNumber);
   if (!aadhaar) {
@@ -180,8 +153,6 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
     };
   }
 
-  // An unknown Aadhaar is still answered with a reference id, so the message
-  // has to be read before treating the number as one worth confirming.
   const requestMessage = requested.payload?.data?.message || '';
   if (/invalid aadhaar/i.test(requestMessage)) {
     return {
@@ -207,9 +178,6 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
 
   const holder = confirmed.payload?.data || {};
 
-  // A one time password that was wrong, expired or still being processed is
-  // answered with an ordinary success status carrying only a message. None of
-  // these say anything about the card, so the guest is not failed for them.
   if ((holder.status || '').toUpperCase() !== 'VALID') {
     return {
       checked: false,
@@ -248,10 +216,7 @@ const verifyAadhaar = async ({ idNumber, name, dob }) => {
   };
 };
 
-/**
- * Checks a PAN against the Income Tax department record, confirming that the
- * card exists and that the name and date of birth printed on it match.
- */
+// Checks a PAN against the Income Tax department record
 const verifyPan = async ({ idNumber, name, dob }) => {
   const pan = normalizePan(idNumber);
   if (!pan) {
@@ -303,8 +268,6 @@ const verifyPan = async ({ idNumber, name, dob }) => {
   }
 
   const data = body?.data || {};
-  // The match flags are read under both the documented and the short field
-  // names, so a rename upstream cannot turn into a silent verification failure.
   const isValid = (data.status || '').toLowerCase() === 'valid';
   const nameMatches = (data.name_as_per_pan_match ?? data.name_match) === true;
   const dobMatches = (data.date_of_birth_match ?? data.dob_match) === true;
@@ -335,11 +298,6 @@ const verifyPan = async ({ idNumber, name, dob }) => {
   };
 };
 
-/**
- * Document types that can be checked from the details on the card alone.
- * Driving licence, passport and voter ID have no record to query, so they are
- * recorded as read-but-unconfirmed rather than being checked here.
- */
 const VERIFIERS = {
   pan: verifyPan,
   aadhaar: verifyAadhaar
@@ -363,12 +321,6 @@ const UNSUPPORTED_REMARKS = {
   unknown: 'The document type could not be identified, so no government check was possible.'
 };
 
-/**
- * Runs the appropriate government check for an extracted document and reports
- * how strongly the identity could be established. A document that cannot be
- * checked is reported as extraction-only rather than as a failure, so the
- * caller can record the difference.
- */
 export const verifyAgainstGovernmentRecord = async (document) => {
   const idType = normalizeIdType(document?.idType);
 

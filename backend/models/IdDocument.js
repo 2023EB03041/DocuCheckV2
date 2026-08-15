@@ -21,7 +21,7 @@ const idDocumentSchema = new mongoose.Schema({
   uploadedAt: {
     type: Date,
     default: Date.now,
-    expires: 94608000 // Automatically delete document after 3 years (1095 days) for DPDP compliance
+    expires: 94608000 //  deletes document after 3 years
   }
 });
 

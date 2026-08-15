@@ -72,10 +72,6 @@ const getModel = () => {
   });
 };
 
-/**
- * Reads the magic bytes of the upload so the correct mime type is sent upstream.
- * Defaults to JPEG, which covers the vast majority of phone camera uploads.
- */
 const detectMimeType = (buffer) => {
   if (!Buffer.isBuffer(buffer) || buffer.length < 12) return 'image/jpeg';
 
@@ -88,10 +84,6 @@ const detectMimeType = (buffer) => {
   return 'image/jpeg';
 };
 
-/**
- * Converts a printed date of birth into an age in completed years.
- * Accepts DD/MM/YYYY (with any of / - . as separator) or a bare four digit year.
- */
 const calculateAge = (dob) => {
   if (!dob || typeof dob !== 'string') return null;
 
@@ -137,11 +129,6 @@ const titleCase = (value) => {
     .join(' ');
 };
 
-/**
- * Sends the image upstream and returns the parsed document fields. The result
- * below summarises these, and carries the document itself so the verification
- * layer can reach the number and printed date of birth.
- */
 const readDocumentFields = async (imageBuffer) => {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
     throw new Error('Empty image buffer');
@@ -190,8 +177,6 @@ export const extractDocumentDetails = async (imageBuffer) => {
     const extractedName = document.name;
     const extractedAge = calculateAge(document.dob);
 
-    // Never accept an ID whose key details could not be read. The guest is asked
-    // to re-upload a clearer photo rather than proceeding with blank data.
     const nameReadable = extractedName && extractedName.trim().length >= 2;
     const ageReadable = extractedAge !== null && !isNaN(extractedAge);
     if (!nameReadable || !ageReadable) {
@@ -206,14 +191,9 @@ export const extractDocumentDetails = async (imageBuffer) => {
       extractedName,
       extractedAge,
       extractedSex: document.gender || 'Other',
-      // Carried for the verification layer only. Holds the document number, so
-      // it must be stripped before the result is returned over the API.
       document
     };
   } catch (error) {
-    // Nothing was learned about the document itself here — the reader could not
-    // be reached, or answered with something unusable. Flagged as retryable so
-    // a passing outage is never mistaken for a verdict on somebody's ID.
     console.error('Document reader unavailable:', error.message);
     return {
       success: false,

@@ -1,10 +1,5 @@
 import guestAuthService from '../services/guestAuthService.js';
 
-/**
- * Lets a request through only when it carries a signed-in guest's session, and
- * leaves that guest's address on the request. Handlers use it to scope what
- * they return to the stays booked under that address.
- */
 const requireGuest = (req, res, next) => {
   const email = guestAuthService.readSessionFromHeader(req.headers.authorization);
 

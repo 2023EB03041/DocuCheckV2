@@ -1,25 +1,12 @@
-// The one-time code is generated, emailed and checked by Stytch, so no code is
-// ever created or stored here and nothing is sent from this server. The message
-// reaches the guest from Stytch's own address, which is what lets this work
-// without a sending domain of our own.
-//
-// Confirming a code is what signs a guest in; the session that follows is
-// issued by guestAuthService.
-
-// Test replies from Stytch's sandbox project; live is the real one. Both send
-// from Stytch's address, so the choice only affects quotas.
 const BASE_URLS = {
   test: 'https://test.stytch.com',
   live: 'https://api.stytch.com'
 };
 
-// An upstream call that stops responding must not hold the guest's request open.
 const REQUEST_TIMEOUT_MS = 15000;
 
-// How long Stytch should keep the emailed code usable.
 const CODE_TTL_MINUTES = 10;
 
-// How long the page waits before offering to send another code.
 const RESEND_COOLDOWN_SECONDS = 60;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -62,11 +49,6 @@ const postToStytch = async (path, body) => {
 };
 
 class SignInCodeService {
-  /**
-   * Asks Stytch to email a code to the address. Nothing is written here —
-   * Stytch holds the code and decides when it expires. The returned id names
-   * the message the code belongs to and has to come back with the code.
-   */
   async requestCode(rawEmail) {
     const email = normalizeEmail(rawEmail);
     assertUsableEmail(email);
@@ -107,11 +89,6 @@ class SignInCodeService {
     };
   }
 
-  /**
-   * Puts the code the guest typed to Stytch. The confirmed address is read back
-   * out of Stytch's answer rather than taken from the request, so a code
-   * confirmed for one address cannot sign anyone in as another.
-   */
   async confirmCode(rawMethodId, rawCode) {
     const methodId = (rawMethodId || '').trim();
     if (!methodId) {
@@ -140,8 +117,6 @@ class SignInCodeService {
     }
 
     if (!result.ok) {
-      // A wrong code, an expired one and a spent one are all reported the same
-      // way, so the guest is given the one instruction that covers all three.
       throw fail(400, 'That code is not correct or has expired. Please check it, or request a new one.');
     }
 

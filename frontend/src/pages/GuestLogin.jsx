@@ -6,27 +6,21 @@ import { saveGuestSession } from '../utils/guestSession';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
-// Signing in and verifying an address are the same act: the guest types an
-// address, answers a code sent to it, and is signed in. This is the only place
-// an address is verified, so nothing later in the booking has to ask again.
 const GuestLogin = ({ onSignIn }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Where to land once signed in — the page that sent the guest here, or the
-  // dashboard if they came on their own.
   const destination = location.state?.from || '/account';
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [methodId, setMethodId] = useState('');
   const [codeSent, setCodeSent] = useState(false);
-  const [busy, setBusy] = useState('');            // 'send' or 'verify'
+  const [busy, setBusy] = useState(''); // 'send' or 'verify'
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [resendIn, setResendIn] = useState(0);
 
-  // Counts the resend cooldown down to zero.
   useEffect(() => {
     if (resendIn <= 0) return;
     const timer = setTimeout(() => setResendIn(s => Math.max(0, s - 1)), 1000);
@@ -51,8 +45,6 @@ const GuestLogin = ({ onSignIn }) => {
       setResendIn(res.data.resendInSeconds || 60);
     } catch (err) {
       const status = err.response?.status;
-      // A cooldown means the earlier code is still live, so the entry box stays
-      // open rather than sending the guest back to the start.
       if (status === 429) setCodeSent(true);
       setResendIn(err.response?.data?.resendInSeconds ?? resendIn);
       setError(err.response?.data?.message || "We couldn't send the code. Please try again in a moment.");

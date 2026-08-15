@@ -7,9 +7,6 @@ import GuestDashboard from './pages/GuestDashboard';
 import StaffDashboard from './pages/StaffDashboard';
 import { getGuestSession, clearGuestSession } from './utils/guestSession';
 
-// Pages only a signed-in guest may reach. Booking is one of them: an account is
-// what a reservation is filed under, and verifying the address at sign-in is
-// what makes it a reachable one.
 const RequireGuest = ({ session, children }) => {
   const location = useLocation();
   if (!session) {
@@ -28,8 +25,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans">
-      {/* z-40 keeps the sticky bar above page content (the hero's blurred card
-          also sits at z-10) while staying below the z-50 modals and dropdowns. */}
+      {/*Nav bar*/}
       <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
@@ -95,7 +91,7 @@ function App() {
                 </div>
               </div>
               
-              {/* Immersive Experiences Section (Alternating) */}
+              {/* Immersive Experiences */}
               <div className="py-24 bg-white overflow-hidden">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-32">
                   
@@ -150,7 +146,7 @@ function App() {
                 </div>
               </div>
               
-              {/* Resort Accommodations Section */}
+              {/* Resort Accommodations */}
               <div className="py-24 bg-[#f8f9fa] border-t border-gray-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <div className="text-center mb-20">
@@ -194,7 +190,7 @@ function App() {
                 </div>
               </div>
               
-              {/* Footer Section */}
+              {/* Footer  */}
               <footer className="bg-[#1a365d] text-white pt-20 pb-10">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">

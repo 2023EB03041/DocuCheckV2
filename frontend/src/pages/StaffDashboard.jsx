@@ -37,7 +37,7 @@ const StaffDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (!user) return; // Don't fetch if not logged in
+    if (!user) return;
     
     const fetchData = async () => {
       try {
@@ -52,7 +52,7 @@ const StaffDashboard = () => {
       } catch (error) {
         console.error('Error fetching data:', error);
         if (error.response && error.response.status === 401) {
-          handleLogout(); // token missing/expired -> return to login
+          handleLogout();
         }
       } finally {
         setLoading(false);
@@ -70,9 +70,6 @@ const StaffDashboard = () => {
     setUser(null);
   };
 
-  // Deter screenshots/captures of an open secure document: blur it when the
-  // window loses focus or a capture key is pressed. Browsers cannot truly block
-  // OS-level screenshots, so this is a deterrent paired with the on-image watermark.
   useEffect(() => {
     if (!documentModalUrl) { setDocHidden(false); return; }
     const hide = () => setDocHidden(true);
@@ -139,7 +136,7 @@ const StaffDashboard = () => {
   const occupiedRooms = rooms.filter(r => r.status === 'Occupied').length;
   const occupancyRate = rooms.length > 0 ? Math.round((occupiedRooms / rooms.length) * 100) : 0;
 
-  // Calculate pre-verified guests (if ALL guests in a reservation are verified)
+  // Calculate pre-verified guests 
   const fullyVerifiedReservations = reservations.filter(r => 
     r.guests && r.guests.length > 0 && r.guests.every(g => g.status === 'Verified')
   ).length;
@@ -346,7 +343,6 @@ const StaffDashboard = () => {
                           {tierRooms.map(room => {
                             const isOccupied = room.status === 'Occupied' && room.currentReservation;
                             
-                            // Get the guests for this specific room
                             let roomGuests = [];
                             if (isOccupied) {
                               const res = room.currentReservation;
@@ -357,7 +353,6 @@ const StaffDashboard = () => {
                               });
                             }
 
-                            // Pre-verified if all guests in THIS ROOM are verified
                             const isVerified = isOccupied && roomGuests.length > 0 && roomGuests.every(g => g.status === 'Verified');
 
                             return (

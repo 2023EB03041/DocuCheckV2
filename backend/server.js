@@ -17,9 +17,6 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
-// Sites a browser may call this API from. The hosted front end and the local
-// dev server are allowed by default so the app works without extra setup;
-// CORS_ORIGINS replaces the list with its own comma separated entries.
 const DEFAULT_ORIGINS = [
   'https://docucheckv2.pages.dev',
   'http://localhost:5173',
@@ -33,21 +30,15 @@ const allowedOrigins = (process.env.CORS_ORIGINS || '')
 
 const originAllowList = allowedOrigins.length ? allowedOrigins : DEFAULT_ORIGINS;
 
-// Middleware
 app.use(cors({
-  // A request with no origin is not coming from a browser page — the platform
-  // health check and server to server calls — so it is left alone. Anything
-  // else is answered without the header a browser needs, which blocks it.
   origin: (origin, callback) => callback(null, !origin || originAllowList.includes(origin)),
   credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Lightweight health check (public, no DB) for the hosting platform.
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-// Routes
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/verify', verifyRoutes);
 app.use('/api/auth', authRoutes);
@@ -59,7 +50,6 @@ import User from './models/User.js';
 import bcrypt from 'bcryptjs';
 import { buildRoomInventory } from './config/roomPricing.js';
 
-// Database Connection
 const PORT = process.env.PORT || 5000;
 
 const connectDB = async () => {
@@ -74,9 +64,6 @@ const connectDB = async () => {
     await mongoose.connect(uri);
     console.log('Connected to MongoDB Atlas');
     
-    // Bring the room inventory into line with the rate card, in both directions.
-    // The tier and its rate are set on every run, not only on insert, so rooms
-    // seeded against an older card are corrected rather than left stale.
     const desiredRooms = buildRoomInventory();
 
     await Room.bulkWrite(desiredRooms.map((r) => ({
@@ -90,9 +77,6 @@ const connectDB = async () => {
       },
     })));
 
-    // A tier that has shrunk leaves rooms behind, and an inventory that only
-    // ever grows would keep selling them. Those are withdrawn — but never one
-    // that is holding a stay, since a guest booked into it has to keep it.
     const retired = await Room.deleteMany({
       roomNumber: { $nin: desiredRooms.map(r => r.roomNumber) },
       currentReservation: { $in: [null, undefined] }

@@ -9,14 +9,10 @@ import { downloadReservationPdf } from '../utils/reservationPdf';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
-// Local midnight today, used as the earliest selectable check-in date.
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 // Parse a 'YYYY-MM-DD' string into a local Date.
 const ymdToDate = (s) => { if (!s) return undefined; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 
-// One line of the upload progress. 'pending' is a step not started, 'active' is
-// the one under way, and 'done' passed. There is no half-passed state: a step
-// that does not pass takes the whole document with it.
 const StepIcon = ({ state }) => {
   if (state === 'active') return <Loader2 className="w-4 h-4 text-[#d4af37] animate-spin shrink-0" />;
   if (state === 'done') return <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />;
@@ -37,14 +33,8 @@ const BookingWizard = ({ session, onSessionExpired }) => {
   const [availableRooms, setAvailableRooms] = useState([]);
   const [errors, setErrors] = useState({});
 
-  // The address on the booking is the one the guest signed in with, which was
-  // confirmed by a code sent to it at that point. Nothing here has to verify it
-  // again, and the guest cannot book under an address that is not theirs.
   const guestEmail = session.email;
 
-  // A session can lapse while a booking is left open. When the server says so,
-  // the guest is signed out and sent back to sign in rather than losing the
-  // page to an error they cannot act on.
   const handleExpiredSession = (message) => {
     alert(message);
     onSessionExpired();
@@ -56,8 +46,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     checkInDate: '',
     checkOutDate: '',
     guestCount: 2,
-    // Every field here is filled in from a confirmed ID, never typed. The type
-    // is whatever the card turned out to be, not something chosen up front.
     guests: [
       { name: '', age: '', sex: '', idType: '' },
       { name: '', age: '', sex: '', idType: '' }
@@ -69,17 +57,9 @@ const BookingWizard = ({ session, onSessionExpired }) => {
 
   // Verification State (Files array matching guest indices)
   const [files, setFiles] = useState([null, null]);
-  // The server's receipt that this guest's ID was confirmed. A file is only
-  // ever kept alongside one of these, and the booking cannot be made without
-  // one for every guest — so there is no way to reach a stay unverified.
   const [passes, setPasses] = useState([null, null]);
-  // Why a guest's last upload was turned away, and whether the same card is
-  // worth another go ('retry') or a different document is needed ('replace').
   const [rejections, setRejections] = useState({});
   const [extracting, setExtracting] = useState({});
-  // Per guest view of how far their upload has got: 'reading' while the details
-  // are being taken off the card, 'checking' while those details are put to the
-  // issuing authority, then the outcome of each once the answer is back.
   const [uploadStage, setUploadStage] = useState({});
   
   // Payment State
@@ -130,8 +110,7 @@ const BookingWizard = ({ session, onSessionExpired }) => {
       }
     }
 
-    // Safely clear only this guest's file (never leave an unverified file
-    // "accepted"), along with anything read off it and its pass.
+    // Safely clear only this guest's file
     const clearFile = () => {
       setFiles(prev => { const c = [...prev]; c[index] = null; return c; });
       setPasses(prev => { const c = [...prev]; c[index] = null; return c; });
@@ -149,10 +128,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     setExtracting(prev => ({ ...prev, [index]: true }));
     setUploadStage(prev => ({ ...prev, [index]: { phase: 'reading' } }));
 
-    // The server reads the card and then puts it to the issuing authority in one
-    // call, so the point it moves between the two is not visible from here. The
-    // second step is shown as started once reading has typically finished; the
-    // ticks below only ever come from what the server actually reported.
     const toChecking = setTimeout(() => {
       setUploadStage(prev => (
         prev[index]?.phase === 'reading' ? { ...prev, [index]: { phase: 'checking' } } : prev
@@ -167,14 +142,12 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     try {
       const res = await axios.post(`${API_URL}/verify`, formData, {
         headers: { 'Content-Type': 'multipart/form-data', ...guestAuthHeader() },
-        timeout: 120000 // reading the document and checking it can be slow on a cold start
+        timeout: 120000
       });
 
       const { verified, extractedName, extractedAge, extractedSex, idType, documentPass, outcome, message } = res.data;
 
-      // Only a document the issuing authority confirmed is kept. Anything else
-      // is handed back to the guest, whatever the reason — there is no partial
-      // pass and nothing is filled in from a card that did not clear.
+      // Only a document the issuing authority confirmed is kept.
       if (!verified) {
         setUploadStage(prev => { const c = { ...prev }; delete c[index]; return c; });
         clearFile();
@@ -203,15 +176,12 @@ const BookingWizard = ({ session, onSessionExpired }) => {
         return { ...prev, guests: g };
       });
     } catch (err) {
-      // Any failure (timeout, server busy, duplicate, network) must reject the file,
-      // never silently keep it. Show a useful message and let the guest retry.
+      // Any failure must reject the file,
       let msg;
       let outcome = 'retry';
       if (err.code === 'ECONNABORTED') {
         msg = "Verification timed out — the server may be waking up. Please try uploading again in a moment.";
       } else if (err.response?.data?.message) {
-        // A document already in use is the one case here that a different
-        // document fixes; the rest are worth trying the same card again.
         msg = err.response.data.message;
         outcome = err.response.status === 400 ? 'replace' : 'retry';
       } else {
@@ -232,7 +202,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     }
   };
 
-  // Fetch available rooms when reaching step 2
   useEffect(() => {
     if (step === 2) {
       const fetchRooms = async () => {
@@ -260,8 +229,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     }
   }, [step]);
 
-  // Both dates are needed before rooms are shown: the length of the stay is
-  // what the nightly rate is multiplied by, so a quote cannot be made without it.
   const handleSearchAvailability = () => {
     const newErrors = {};
     if (!booking.checkInDate) newErrors.checkInDate = 'Please choose a check-in date';
@@ -282,9 +249,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     }
     
     booking.guests.forEach((guest, index) => {
-      // The pass is the only thing that counts: it exists only for a document
-      // the issuing authority confirmed, and the details below were filled in
-      // from that same document.
       if (!passes[index] || !files[index]) {
         newErrors[`guest_file_${index}`] = "A confirmed ID document is required for this guest";
         return;
@@ -308,8 +272,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
   };
 
   const handleRoomSelect = (room) => {
-    // Only the tier and its rate are carried forward; the total is worked out
-    // from the shared quote so it stays in step with the rooms and the nights.
     setBooking(prev => ({ ...prev, roomType: room.type, pricePerNight: room.pricePerNight }));
     setStep(3);
   };
@@ -372,7 +334,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
     if (!validatePayment()) return;
     setPaymentStatus('connecting');
 
-    // Simulate connecting to bank gateway, then issue a demo OTP.
     setTimeout(() => {
       setGeneratedOtp(String(Math.floor(100000 + Math.random() * 900000)));
       setOtp('');
@@ -389,13 +350,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
 
     setPaymentStatus('processing');
     try {
-      // The documents were confirmed before we got here, so the booking carries
-      // each guest's pass rather than their details. The server records the
-      // stay from those passes — nothing is uploaded or re-checked afterwards,
-      // which is why a confirmation can never come back part-verified.
-      //
-      // The total is not sent either: the server prices the stay from the same
-      // rate card the quote above was built from.
       const res = await axios.post(`${API_URL}/reservations`, {
         ...booking,
         guests: booking.guests.map((guest, index) => ({ ...guest, documentPass: passes[index] }))
@@ -406,7 +360,7 @@ const BookingWizard = ({ session, onSessionExpired }) => {
       setPaymentStatus('success');
       setTimeout(() => {
         setPaymentStatus('idle');
-        setStep(5); // Success step
+        setStep(5);
       }, 1500);
       
     } catch (error) {
@@ -420,10 +374,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
       const message = error.response?.data?.message || 'Payment processing failed. Please try again.';
       alert(message);
 
-      // The server refuses a booking whose guests are not all confirmed — which
-      // here means a confirmation has aged out while the guest sat on the
-      // payment screen. Send them back to the IDs rather than leaving them
-      // pressing pay against a booking that cannot be made.
       if (/ID document|confirmed ID|own ID/i.test(message)) {
         setStep(3);
       }
@@ -683,8 +633,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
                           </div>
                         </div>
                       ) : files[index] ? (
-                        // A file is only ever held here once the check has
-                        // passed, so there is no half-verified state to show.
                         <div className="flex flex-col items-center">
                           <p className="font-medium text-gray-900 text-sm mb-3">{files[index].name}</p>
                           <div className="w-full max-w-[17rem] space-y-2">
@@ -913,8 +861,6 @@ const BookingWizard = ({ session, onSessionExpired }) => {
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Guest Verification Status</h3>
             <div className="space-y-4">
               {reservation.guests.map((guest, idx) => (
-                // Every guest on a confirmed stay cleared the government check
-                // before the booking was made, so there is only one thing to say.
                 <div key={idx} className="flex items-start gap-4 p-4 rounded-md border bg-white shadow-sm">
                   <ShieldCheck className="w-6 h-6 mt-1 text-green-500" />
                   <div>
